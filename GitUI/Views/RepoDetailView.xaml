@@ -1,0 +1,119 @@
+<UserControl x:Class="GitUI.Views.RepoDetailView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.modernwpf.com/2019"
+             xmlns:vm="clr-namespace:GitUI.ViewModels"
+             xmlns:vmt="clr-namespace:GitUI.ViewModels.Tabs"
+             xmlns:tabs="clr-namespace:GitUI.Views.Tabs"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             d:DataContext="{d:DesignInstance Type=vm:RepoDetailViewModel}"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <DataTemplate DataType="{x:Type vmt:UploadTabViewModel}"><tabs:UploadTab/></DataTemplate>
+        <DataTemplate DataType="{x:Type vmt:WatchTabViewModel}"><tabs:WatchTab/></DataTemplate>
+        <DataTemplate DataType="{x:Type vmt:ReadmeTabViewModel}"><tabs:ReadmeTab/></DataTemplate>
+        <DataTemplate DataType="{x:Type vmt:HistoryTabViewModel}"><tabs:HistoryTab/></DataTemplate>
+        <DataTemplate DataType="{x:Type vmt:IssuesTabViewModel}"><tabs:IssuesTab/></DataTemplate>
+        <DataTemplate DataType="{x:Type vmt:SettingsTabViewModel}"><tabs:SettingsTab/></DataTemplate>
+    </UserControl.Resources>
+
+    <Grid Margin="32,24,32,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Repo.Name}" FontSize="26" FontWeight="SemiBold"/>
+                    <Border Margin="12,8,0,0" Padding="8,2" CornerRadius="10"
+                            Background="{Binding Repo.Private, Converter={StaticResource PrivateBadge}}"
+                            VerticalAlignment="Center">
+                        <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="#222">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="Public"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Repo.Private}" Value="True">
+                                            <Setter Property="Text" Value="Private"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Border>
+                </StackPanel>
+                <TextBlock Text="{Binding Repo.FullName}" Opacity="0.55" FontSize="13" Margin="0,2,0,0"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                <Button Command="{Binding OpenInBrowserCommand}" Margin="0,0,8,0">
+                    <TextBlock Text="🔗 열기"/>
+                </Button>
+                <Button Command="{Binding DeleteRepoCommand}"
+                        Background="#5C2A2A" Foreground="White">
+                    <TextBlock Text="🗑 삭제"/>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- Branch row -->
+        <Grid Grid.Row="1" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="240"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="🌿 브랜치" Opacity="0.75" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <ComboBox Grid.Column="1"
+                      ItemsSource="{Binding Branches}"
+                      SelectedItem="{Binding CurrentBranch}"
+                      HorizontalAlignment="Stretch"/>
+            <Button Grid.Column="2" Command="{Binding RefreshBranchesCommand}"
+                    Background="Transparent" BorderThickness="0" Margin="4,0,0,0"
+                    ToolTip="새로고침">
+                <TextBlock Text="↻"/>
+            </Button>
+            <TextBox Grid.Column="4" Width="180"
+                     Text="{Binding NewBranchName, UpdateSourceTrigger=PropertyChanged}"
+                     ui:ControlHelper.PlaceholderText="새 브랜치 이름"
+                     Margin="0,0,8,0"/>
+            <Button Grid.Column="5" Command="{Binding CreateBranchCommand}" Content="생성"/>
+        </Grid>
+
+        <!-- Tabs -->
+        <TabControl Grid.Row="2" Margin="0,16,0,0"
+                    SelectedIndex="{Binding SelectedTabIndex}"
+                    Background="Transparent"
+                    BorderThickness="0">
+            <TabItem Header="📤 업로드">
+                <ContentControl Content="{Binding Upload}"/>
+            </TabItem>
+            <TabItem Header="👁 자동 감시">
+                <ContentControl Content="{Binding Watch}"/>
+            </TabItem>
+            <TabItem Header="📝 README">
+                <ContentControl Content="{Binding Readme}"/>
+            </TabItem>
+            <TabItem Header="📜 히스토리">
+                <ContentControl Content="{Binding History}"/>
+            </TabItem>
+            <TabItem Header="🐛 Issues / PRs">
+                <ContentControl Content="{Binding Issues}"/>
+            </TabItem>
+            <TabItem Header="🔧 설정">
+                <ContentControl Content="{Binding Settings}"/>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>
