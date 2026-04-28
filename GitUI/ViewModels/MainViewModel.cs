@@ -29,6 +29,8 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _multiSelectMode;
     [ObservableProperty] private bool _isDarkTheme = true;
     [ObservableProperty] private CommandPaletteViewModel? _commandPalette;
+    [ObservableProperty] private int _watchCount;
+    [ObservableProperty] private bool _autoStartEnabled;
 
     public ObservableCollection<RepoItem> AllRepos { get; } = new();
     public ObservableCollection<RepoItem> FilteredRepos { get; } = new();
@@ -39,6 +41,8 @@ public partial class MainViewModel : ObservableObject
     public MainViewModel()
     {
         Login = new LoginViewModel(OnAuthenticatedAsync);
+        AutoStartEnabled = AutoStart.IsEnabled;
+        WatchManager.Instance.Changed += () => WatchCount = WatchManager.Instance.Count;
         _ = AutoLoginAsync();
     }
 
@@ -85,6 +89,12 @@ public partial class MainViewModel : ObservableObject
             AuthMethod.Pat => "PAT",
             _ => null
         };
+
+        // Bind WatchManager to the now-authenticated client and resume any persisted watches.
+        WatchManager.Instance.Bind(_github);
+        WatchManager.Instance.ResumeAll();
+        WatchCount = WatchManager.Instance.Count;
+
         _ = LoadReposAsync();
         ShowCreateRepo();
     }
@@ -92,6 +102,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void Logout()
     {
+        WatchManager.Instance.StopAll();
         TokenStorage.Clear();
         _github.Logout();
         IsAuthenticated = false;
@@ -105,6 +116,24 @@ public partial class MainViewModel : ObservableObject
         CurrentContent = null;
         Login = new LoginViewModel(OnAuthenticatedAsync);
     }
+
+    [RelayCommand]
+    private void ToggleAutoStart()
+    {
+        if (AutoStartEnabled)
+        {
+            AutoStart.Disable();
+            AutoStartEnabled = false;
+        }
+        else
+        {
+            AutoStart.Enable();
+            AutoStartEnabled = AutoStart.IsEnabled;
+        }
+    }
+
+    [RelayCommand]
+    private void StopAllWatches() => WatchManager.Instance.StopAll();
 
     [RelayCommand]
     public async Task RefreshReposAsync() => await LoadReposAsync();
@@ -277,6 +306,9 @@ public partial class MainViewModel : ObservableObject
             new("🔍", "외부 리포 검색", null, null, () => ShowSearch()),
             new("↻", "리포 목록 새로고침", null, "Ctrl+R", () => _ = LoadReposAsync()),
             new("🌓", "테마 전환 (다크/라이트)", null, null, () => ToggleTheme()),
+            new("⚡", AutoStartEnabled ? "Windows 시작 시 자동 실행 끄기" : "Windows 시작 시 자동 실행 켜기",
+                null, null, () => ToggleAutoStart()),
+            new("⏹", $"감시 모두 중지 ({WatchCount}개)", null, null, () => StopAllWatches()),
             new("🚪", "로그아웃", null, null, () => Logout()),
             new("☑", MultiSelectMode ? "다중선택 모드 끄기" : "다중선택 모드 켜기", null, null, () => ToggleMultiSelect()),
         };
