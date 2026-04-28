@@ -56,6 +56,15 @@
                     </StackPanel>
                 </Grid>
 
+                <CheckBox IsChecked="{Binding MirrorDeletions}"
+                          Margin="0,0,0,8"
+                          IsEnabled="{Binding IsRunning, Converter={StaticResource InverseBoolEnableConverter}}">
+                    <StackPanel>
+                        <TextBlock Text="삭제도 미러링 (로컬에서 사라진 파일 → 원격에서도 삭제)"/>
+                        <TextBlock Text="끄면 추가/수정만 푸시 (안전)" Opacity="0.5" FontSize="10"/>
+                    </StackPanel>
+                </CheckBox>
+
                 <Button Command="{Binding ToggleWatchCommand}"
                         Style="{StaticResource AccentButtonStyle}"
                         Height="40">
