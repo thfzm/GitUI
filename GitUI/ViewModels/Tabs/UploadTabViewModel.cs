@@ -22,6 +22,7 @@ public partial class UploadTabViewModel : ObservableObject
     [ObservableProperty] private string _commitMessage = "Update via GitUI";
     [ObservableProperty] private string _targetSubpath = "";
     [ObservableProperty] private bool _respectGitignore = true;
+    [ObservableProperty] private bool _mirrorDeletions = true;
     [ObservableProperty] private string? _statusMessage;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private double _progress;
