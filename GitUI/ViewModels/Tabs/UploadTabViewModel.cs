@@ -28,11 +28,79 @@ public partial class UploadTabViewModel : ObservableObject
     [ObservableProperty] private double _progress;
     [ObservableProperty] private string? _progressLabel;
 
+    private bool _suppressSave;
+    private bool _folderHealthChecked;
+
     public UploadTabViewModel(GitHubService github, RepoItem repo, Func<string> currentBranch)
     {
         _github = github;
         Repo = repo;
         CurrentBranchAccessor = currentBranch;
+        LoadFromPrefs();
+    }
+
+    private void LoadFromPrefs()
+    {
+        _suppressSave = true;
+        try
+        {
+            var p = RepoSettingsStore.Get(Repo.FullName);
+            SelectedFolder = p.UploadFolder;
+            TargetSubpath = p.UploadTargetSubpath ?? "";
+            CommitMessage = string.IsNullOrEmpty(p.UploadCommitMessage) ? "Update via GitUI" : p.UploadCommitMessage;
+            RespectGitignore = p.UploadRespectGitignore;
+            MirrorDeletions = p.UploadMirrorDeletions;
+        }
+        finally { _suppressSave = false; }
+    }
+
+    private void SavePrefs()
+    {
+        if (_suppressSave) return;
+        var p = RepoSettingsStore.Get(Repo.FullName);
+        p.UploadFolder = SelectedFolder;
+        p.UploadTargetSubpath = TargetSubpath;
+        p.UploadCommitMessage = CommitMessage;
+        p.UploadRespectGitignore = RespectGitignore;
+        p.UploadMirrorDeletions = MirrorDeletions;
+        RepoSettingsStore.Save();
+    }
+
+    partial void OnSelectedFolderChanged(string? value) => SavePrefs();
+    partial void OnTargetSubpathChanged(string value) => SavePrefs();
+    partial void OnCommitMessageChanged(string value) => SavePrefs();
+    partial void OnRespectGitignoreChanged(bool value) => SavePrefs();
+    partial void OnMirrorDeletionsChanged(bool value) => SavePrefs();
+
+    /// <summary>
+    /// Called from the View's Loaded handler. If the previously-saved upload folder
+    /// no longer exists on disk, prompt the user once to pick a new one.
+    /// </summary>
+    public void VerifyFolderHealth()
+    {
+        if (_folderHealthChecked) return;
+        _folderHealthChecked = true;
+
+        var folder = SelectedFolder;
+        if (string.IsNullOrEmpty(folder)) return;
+        if (Directory.Exists(folder)) return;
+
+        var result = MessageBox.Show(
+            $"이 리포지토리에 저장된 업로드 폴더를 찾을 수 없습니다.\n\n경로: {folder}\n\n새 폴더를 선택하시겠습니까?",
+            $"{Repo.Name} · 업로드 폴더 없음",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            PickFolder();
+        }
+        else if (result == MessageBoxResult.No)
+        {
+            // Forget the saved value so we don't pester next time.
+            SelectedFolder = null;
+        }
+        // Cancel → leave it alone; will ask again next session.
     }
 
     [RelayCommand]
