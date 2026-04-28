@@ -144,6 +144,13 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    public void ShowSearch()
+    {
+        SelectedRepo = null;
+        CurrentContent = new SearchViewModel(_github);
+    }
+
+    [RelayCommand]
     public void ShowCreateRepo()
     {
         SelectedRepo = null;
@@ -267,6 +274,7 @@ public partial class MainViewModel : ObservableObject
         var items = new List<CommandItem>
         {
             new("➕", "새 리포지토리", null, "Ctrl+N", () => ShowCreateRepo()),
+            new("🔍", "외부 리포 검색", null, null, () => ShowSearch()),
             new("↻", "리포 목록 새로고침", null, "Ctrl+R", () => _ = LoadReposAsync()),
             new("🌓", "테마 전환 (다크/라이트)", null, null, () => ToggleTheme()),
             new("🚪", "로그아웃", null, null, () => Logout()),
@@ -281,6 +289,21 @@ public partial class MainViewModel : ObservableObject
                 captured.Description,
                 captured.FullName,
                 () => SelectedRepo = captured));
+            items.Add(new CommandItem(
+                "📥",
+                $"클론: {captured.Name}",
+                captured.FullName,
+                null,
+                () =>
+                {
+                    var clone = _github.CreateCloneService();
+                    if (clone == null) return;
+                    var dlg = new GitUI.Views.Dialogs.CloneDialog(clone, captured, new[] { captured.DefaultBranch }, captured.DefaultBranch)
+                    {
+                        Owner = Application.Current.MainWindow
+                    };
+                    dlg.ShowDialog();
+                }));
         }
         CommandPalette = new CommandPaletteViewModel(items, () => CommandPalette = null);
     }
