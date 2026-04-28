@@ -1,17 +1,38 @@
+using System;
+using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using GitUI.Models;
+using GitUI.Services;
 using GitUI.ViewModels;
 
 namespace GitUI;
 
 public partial class MainWindow : Window
 {
+    private bool _reallyExit;
+    private bool _trayHintShown;
+
     public MainWindow()
     {
         InitializeComponent();
         TrayIcon.Icon = System.Drawing.SystemIcons.Application;
+
+        Loaded += MainWindow_Loaded;
+        WatchManager.Instance.Changed += UpdateTrayState;
+        UpdateTrayState();
+    }
+
+    private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        AutoStartMenuItem.IsChecked = AutoStart.IsEnabled;
+
+        // If launched via Windows auto-start (--minimized), go straight to tray.
+        if (App.StartMinimized)
+        {
+            HideToTray(silent: true);
+        }
     }
 
     // ---- Drag-drop on window for new repo creation -----------------------
@@ -70,19 +91,62 @@ public partial class MainWindow : Window
             vm.SelectedRepos.Add(item);
     }
 
-    // ---- Tray icon -------------------------------------------------------
+    // ---- Window close & tray ---------------------------------------------
 
-    private void Window_StateChanged(object sender, System.EventArgs e)
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (_reallyExit)
+        {
+            base.OnClosing(e);
+            return;
+        }
+        // X button always hides to tray so background watches keep running.
+        e.Cancel = true;
+        HideToTray(silent: false);
+    }
+
+    private void Window_StateChanged(object sender, EventArgs e)
     {
         if (WindowState == WindowState.Minimized)
         {
-            TrayIcon.Visibility = Visibility.Visible;
-            ShowInTaskbar = false;
+            HideToTray(silent: false);
         }
     }
 
-    private void TrayIcon_DoubleClick(object sender, System.Windows.RoutedEventArgs e)
-        => ShowFromTray();
+    private void HideToTray(bool silent)
+    {
+        Hide();
+        ShowInTaskbar = false;
+        TrayIcon.Visibility = Visibility.Visible;
+        UpdateTrayState();
+
+        if (!silent && !_trayHintShown)
+        {
+            _trayHintShown = true;
+            try
+            {
+                var watchCount = WatchManager.Instance.Count;
+                var msg = watchCount > 0
+                    ? $"GitUI는 트레이에서 계속 동작합니다.\n감시 중인 폴더: {watchCount}개"
+                    : "GitUI는 트레이에서 동작합니다.\n트레이 아이콘을 더블클릭하면 다시 열립니다.";
+                TrayIcon.ShowBalloonTip("GitUI", msg, Hardcodet.Wpf.TaskbarNotification.BalloonIcon.Info);
+            }
+            catch { }
+        }
+    }
+
+    private void UpdateTrayState()
+    {
+        Dispatcher.Invoke(() =>
+        {
+            var n = WatchManager.Instance.Count;
+            WatchCountMenuItem.Header = $"감시 중: {n}개";
+            StopAllWatchesMenuItem.IsEnabled = n > 0;
+            TrayIcon.ToolTipText = n > 0 ? $"GitUI · 감시 중 {n}개" : "GitUI";
+        });
+    }
+
+    private void TrayIcon_DoubleClick(object sender, RoutedEventArgs e) => ShowFromTray();
 
     private void ShowFromTray_Click(object sender, RoutedEventArgs e) => ShowFromTray();
 
@@ -95,8 +159,22 @@ public partial class MainWindow : Window
         Activate();
     }
 
+    private void StopAllWatches_Click(object sender, RoutedEventArgs e)
+    {
+        WatchManager.Instance.StopAll();
+    }
+
+    private void AutoStart_Click(object sender, RoutedEventArgs e)
+    {
+        if (AutoStart.IsEnabled) AutoStart.Disable();
+        else AutoStart.Enable();
+        AutoStartMenuItem.IsChecked = AutoStart.IsEnabled;
+        if (DataContext is MainViewModel vm) vm.AutoStartEnabled = AutoStart.IsEnabled;
+    }
+
     private void ExitFromTray_Click(object sender, RoutedEventArgs e)
     {
+        _reallyExit = true;
         TrayIcon.Visibility = Visibility.Collapsed;
         Application.Current.Shutdown();
     }
