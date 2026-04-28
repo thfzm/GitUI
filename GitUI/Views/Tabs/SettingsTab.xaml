@@ -97,25 +97,127 @@
                     BorderThickness="1">
                 <StackPanel>
                     <TextBlock Text="새 릴리스 만들기" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12"/>
+
+                    <!-- Tag with auto-suggest -->
                     <TextBlock Text="태그 *" Opacity="0.75" FontSize="12" Margin="0,0,0,4"/>
-                    <TextBox Text="{Binding ReleaseTag, UpdateSourceTrigger=PropertyChanged}"
-                             ui:ControlHelper.PlaceholderText="v1.0.0"
-                             Margin="0,0,0,12"/>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding ReleaseTag, UpdateSourceTrigger=PropertyChanged}"
+                                 ui:ControlHelper.PlaceholderText="v1.0.0"/>
+                        <Button Grid.Column="1" Command="{Binding SuggestNextTagCommand}"
+                                Content="다음 버전 제안" Margin="8,0,0,0"
+                                ToolTip="가장 최근 릴리스의 patch를 +1"/>
+                    </Grid>
+
                     <TextBlock Text="이름" Opacity="0.75" FontSize="12" Margin="0,0,0,4"/>
                     <TextBox Text="{Binding ReleaseName, UpdateSourceTrigger=PropertyChanged}"
-                             ui:ControlHelper.PlaceholderText="(선택)"
+                             ui:ControlHelper.PlaceholderText="(선택, 자동 생성 시 채워짐)"
                              Margin="0,0,0,12"/>
-                    <TextBlock Text="설명" Opacity="0.75" FontSize="12" Margin="0,0,0,4"/>
+
+                    <!-- Body with auto-generate -->
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="설명" Opacity="0.75" FontSize="12" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Command="{Binding GenerateReleaseNotesCommand}"
+                                Padding="8,2" FontSize="11"
+                                ToolTip="마지막 릴리스 이후 커밋·PR을 자동 요약">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="✨" Margin="0,0,4,0"/>
+                                <TextBlock Text="자동 노트 생성"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
                     <TextBox Text="{Binding ReleaseBody, UpdateSourceTrigger=PropertyChanged}"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             MinHeight="80"
+                             AcceptsReturn="True" TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto"
+                             MinHeight="120" MaxHeight="240"
+                             FontFamily="Consolas, Courier New" FontSize="12"
                              Margin="0,0,0,12"/>
-                    <CheckBox IsChecked="{Binding ReleasePrerelease}" Content="Pre-release" Margin="0,0,0,12"/>
+
+                    <CheckBox IsChecked="{Binding ReleasePrerelease}" Content="Pre-release" Margin="0,0,0,16"/>
+
+                    <!-- Attachments -->
+                    <TextBlock Text="첨부 파일 (asset)" Opacity="0.75" FontSize="12" Margin="0,0,0,6"/>
+                    <Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                            CornerRadius="6" Padding="8" Margin="0,0,0,8">
+                        <StackPanel>
+                            <ItemsControl ItemsSource="{Binding Attachments}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Margin="0,0,6,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="📄"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsTempZip}" Value="True">
+                                                                <Setter Property="Text" Value="📦"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Grid.Column="1" Text="{Binding FileName}"
+                                                       FontFamily="Consolas, Courier New" FontSize="12"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding DisplaySize}"
+                                                       Opacity="0.55" FontSize="11" Margin="8,0"
+                                                       VerticalAlignment="Center"/>
+                                            <Button Grid.Column="3"
+                                                    Command="{Binding DataContext.RemoveAttachmentCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    Background="Transparent" BorderThickness="0"
+                                                    Padding="4,0" ToolTip="제거">
+                                                <TextBlock Text="✕" Opacity="0.6"/>
+                                            </Button>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="첨부된 파일이 없습니다."
+                                       Opacity="0.4" FontSize="11" Margin="2,2,0,0"
+                                       Visibility="{Binding Attachments.Count, Converter={StaticResource ZeroToVis}}"/>
+                        </StackPanel>
+                    </Border>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Command="{Binding AddAttachmentFileCommand}"
+                                Margin="0,0,4,0" Height="32">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="📄" Margin="0,0,6,0"/>
+                                <TextBlock Text="파일 추가"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Grid.Column="1" Command="{Binding AddAttachmentFolderCommand}"
+                                Margin="4,0,0,0" Height="32">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="📦" Margin="0,0,6,0"/>
+                                <TextBlock Text="폴더 ZIP으로 추가"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
                     <Button Command="{Binding CreateReleaseCommand}"
                             Style="{StaticResource AccentButtonStyle}"
-                            Content="🏷 릴리스 생성"
-                            Height="36"/>
+                            Content="🏷 릴리스 생성 + asset 업로드"
+                            Height="40"/>
                 </StackPanel>
             </Border>
 
