@@ -13,6 +13,13 @@ public partial class UploadTab : UserControl
     public UploadTab()
     {
         InitializeComponent();
+        Loaded += UploadTab_Loaded;
+    }
+
+    private void UploadTab_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is UploadTabViewModel vm)
+            vm.VerifyFolderHealth();
     }
 
     private void DropZone_DragEnter(object sender, DragEventArgs e)
