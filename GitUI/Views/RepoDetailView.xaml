@@ -12,6 +12,7 @@
     <UserControl.Resources>
         <DataTemplate DataType="{x:Type vmt:UploadTabViewModel}"><tabs:UploadTab/></DataTemplate>
         <DataTemplate DataType="{x:Type vmt:WatchTabViewModel}"><tabs:WatchTab/></DataTemplate>
+        <DataTemplate DataType="{x:Type vmt:FilesTabViewModel}"><tabs:FilesTab/></DataTemplate>
         <DataTemplate DataType="{x:Type vmt:ReadmeTabViewModel}"><tabs:ReadmeTab/></DataTemplate>
         <DataTemplate DataType="{x:Type vmt:HistoryTabViewModel}"><tabs:HistoryTab/></DataTemplate>
         <DataTemplate DataType="{x:Type vmt:IssuesTabViewModel}"><tabs:IssuesTab/></DataTemplate>
@@ -54,6 +55,16 @@
                 <TextBlock Text="{Binding Repo.FullName}" Opacity="0.55" FontSize="13" Margin="0,2,0,0"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                <Button Command="{Binding CloneCommand}" Margin="0,0,8,0"
+                        ToolTip="로컬에 git clone">
+                    <TextBlock Text="📥 클론"/>
+                </Button>
+                <Button Command="{Binding CopyCloneUrlCommand}" Margin="0,0,8,0"
+                        ToolTip="Clone URL 복사"
+                        Background="Transparent" BorderThickness="1"
+                        BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+                    <TextBlock Text="📋"/>
+                </Button>
                 <Button Command="{Binding OpenInBrowserCommand}" Margin="0,0,8,0">
                     <TextBlock Text="🔗 열기"/>
                 </Button>
@@ -101,6 +112,9 @@
             </TabItem>
             <TabItem Header="👁 자동 감시">
                 <ContentControl Content="{Binding Watch}"/>
+            </TabItem>
+            <TabItem Header="📁 파일">
+                <ContentControl Content="{Binding Files}"/>
             </TabItem>
             <TabItem Header="📝 README">
                 <ContentControl Content="{Binding Readme}"/>
