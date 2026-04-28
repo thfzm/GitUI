@@ -91,13 +91,10 @@ public partial class UploadTabViewModel : ObservableObject
         StatusMessage = $"'{Path.GetFileName(SelectedFolder)}' 동기화 중...";
         try
         {
-            var progress = new Progress<(int current, int total, string filename)>(p =>
-            {
-                Progress = p.total == 0 ? 0 : (double)p.current / p.total * 100;
-                ProgressLabel = $"{p.current}/{p.total} · {p.filename}";
-            });
-            await _github.UploadFolderAsync(owner, Repo.Name, SelectedFolder!, msg, CurrentBranchAccessor(), prefix, RespectGitignore, progress);
-            StatusMessage = "동기화 완료.";
+            // Use SyncPreview so we can also process deletions (mirror sync) when MirrorDeletions is on.
+            var preview = await SyncPreview.ComputeAsync(_github.Client!, owner, Repo.Name,
+                CurrentBranchAccessor(), SelectedFolder!, prefix);
+            await ExecuteSyncAsync(preview, msg);
         }
         catch (Exception ex)
         {
