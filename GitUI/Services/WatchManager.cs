@@ -119,19 +119,31 @@ public sealed class WatchManager
                 _github.Client!, owner, name, aw.Config.DefaultBranch,
                 aw.Config.FolderPath, prefix);
 
-            int n = 0;
+            int uploaded = 0, removed = 0;
             foreach (var entry in preview.Entries)
             {
-                if (entry.Change is not (FileChange.Added or FileChange.Modified)) continue;
-                var bytes = await File.ReadAllBytesAsync(entry.LocalPath);
-                await _github.UploadFileAsync(owner, name, entry.TargetPath, bytes,
-                    aw.Config.CommitMessage, aw.Config.DefaultBranch);
-                n++;
+                if (entry.Change is FileChange.Added or FileChange.Modified)
+                {
+                    var bytes = await File.ReadAllBytesAsync(entry.LocalPath);
+                    await _github.UploadFileAsync(owner, name, entry.TargetPath, bytes,
+                        aw.Config.CommitMessage, aw.Config.DefaultBranch);
+                    uploaded++;
+                }
+                else if (entry.Change == FileChange.Deleted && aw.Config.MirrorDeletions)
+                {
+                    await _github.DeleteFileAsync(owner, name, entry.TargetPath, entry.RemoteSha,
+                        aw.Config.CommitMessage, aw.Config.DefaultBranch);
+                    removed++;
+                }
             }
             aw.LastSyncedAt = DateTime.Now;
-            Dispatch(() => Append(aw, n > 0
-                ? $"[동기화 완료] {n}개 파일 ({preview.Unchanged}개 변경 없음)"
-                : "[변경 없음]"));
+            Dispatch(() =>
+            {
+                if (uploaded == 0 && removed == 0)
+                    Append(aw, "[변경 없음]");
+                else
+                    Append(aw, $"[동기화 완료] 업로드 {uploaded} · 삭제 {removed} · 동일 {preview.Unchanged}");
+            });
         }
         catch (Exception ex)
         {
