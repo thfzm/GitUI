@@ -11,6 +11,7 @@ public partial class SyncPreviewDialog : Window
     public int Modified { get; }
     public int Unchanged { get; }
     public int Skipped { get; }
+    public int Deleted { get; }
     public string Message { get; }
 
     public SyncPreviewDialog(SyncPreviewResult result, string message)
@@ -20,6 +21,7 @@ public partial class SyncPreviewDialog : Window
         Modified = result.Modified;
         Unchanged = result.Unchanged;
         Skipped = result.Skipped;
+        Deleted = result.Deleted;
         Message = message;
         DataContext = this;
         InitializeComponent();
