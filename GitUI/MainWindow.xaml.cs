@@ -17,7 +17,21 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        TrayIcon.Icon = System.Drawing.SystemIcons.Application;
+
+        // Use the bundled icon.ico for the tray (matches the window/EXE icon).
+        try
+        {
+            var stream = System.Windows.Application.GetResourceStream(
+                new System.Uri("pack://application:,,,/icon.ico"))?.Stream;
+            if (stream != null)
+                TrayIcon.Icon = new System.Drawing.Icon(stream);
+            else
+                TrayIcon.Icon = System.Drawing.SystemIcons.Application;
+        }
+        catch
+        {
+            TrayIcon.Icon = System.Drawing.SystemIcons.Application;
+        }
 
         Loaded += MainWindow_Loaded;
         WatchManager.Instance.Changed += UpdateTrayState;
