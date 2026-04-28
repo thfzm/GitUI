@@ -117,19 +117,33 @@ public partial class UploadTabViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var toUpload = new List<SyncFileEntry>();
+            var work = new List<SyncFileEntry>();
             foreach (var e in preview.Entries)
-                if (e.Change is FileChange.Added or FileChange.Modified) toUpload.Add(e);
-
-            for (int i = 0; i < toUpload.Count; i++)
             {
-                var e = toUpload[i];
-                Progress = (double)(i + 1) / toUpload.Count * 100;
-                ProgressLabel = $"{i + 1}/{toUpload.Count} · {e.TargetPath}";
-                var content = await File.ReadAllBytesAsync(e.LocalPath);
-                await _github.UploadFileAsync(owner, Repo.Name, e.TargetPath, content, message, CurrentBranchAccessor());
+                if (e.Change is FileChange.Added or FileChange.Modified) work.Add(e);
+                else if (e.Change == FileChange.Deleted && MirrorDeletions) work.Add(e);
             }
-            StatusMessage = $"{toUpload.Count}개 파일 업로드 완료. (변경 없음 {preview.Unchanged}, 스킵 {preview.Skipped})";
+
+            int uploaded = 0, removed = 0;
+            for (int i = 0; i < work.Count; i++)
+            {
+                var e = work[i];
+                Progress = (double)(i + 1) / work.Count * 100;
+                if (e.Change == FileChange.Deleted)
+                {
+                    ProgressLabel = $"{i + 1}/{work.Count} · 🗑 {e.TargetPath}";
+                    await _github.DeleteFileAsync(owner, Repo.Name, e.TargetPath, e.RemoteSha, message, CurrentBranchAccessor());
+                    removed++;
+                }
+                else
+                {
+                    ProgressLabel = $"{i + 1}/{work.Count} · {e.TargetPath}";
+                    var content = await File.ReadAllBytesAsync(e.LocalPath);
+                    await _github.UploadFileAsync(owner, Repo.Name, e.TargetPath, content, message, CurrentBranchAccessor());
+                    uploaded++;
+                }
+            }
+            StatusMessage = $"동기화 완료 — 업로드 {uploaded} · 삭제 {removed} · 동일 {preview.Unchanged} · 스킵 {preview.Skipped}";
         }
         catch (Exception ex)
         {
