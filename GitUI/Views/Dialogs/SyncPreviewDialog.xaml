@@ -74,6 +74,9 @@
                                             <DataTrigger Binding="{Binding Change}" Value="Modified">
                                                 <Setter Property="Background" Value="#A87929"/>
                                             </DataTrigger>
+                                            <DataTrigger Binding="{Binding Change}" Value="Deleted">
+                                                <Setter Property="Background" Value="#B33232"/>
+                                            </DataTrigger>
                                             <DataTrigger Binding="{Binding Change}" Value="Skipped">
                                                 <Setter Property="Background" Value="#5C2A2A"/>
                                             </DataTrigger>
