@@ -250,6 +250,46 @@ public class GitHubService
             && msg.Contains("expected", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Deletes a file via the Contents API. Retries on stale-SHA conflicts by refetching.
+    /// Treats 404 as success (file already gone).
+    /// </summary>
+    public async Task DeleteFileAsync(string owner, string repo, string path, string? sha, string commitMessage, string branch)
+    {
+        Require();
+        path = path.Replace('\\', '/').TrimStart('/');
+
+        const int maxAttempts = 5;
+        for (int attempt = 1; ; attempt++)
+        {
+            string? currentSha = sha;
+            // After the first attempt (or if no sha was provided), refetch to get fresh SHA.
+            if (attempt > 1 || string.IsNullOrEmpty(currentSha))
+            {
+                try
+                {
+                    var existing = await _client!.Repository.Content.GetAllContentsByRef(owner, repo, path, branch);
+                    var existingFile = existing.FirstOrDefault();
+                    if (existingFile == null) return;  // already gone
+                    currentSha = existingFile.Sha;
+                }
+                catch (NotFoundException) { return; }
+            }
+
+            try
+            {
+                await _client!.Repository.Content.DeleteFile(owner, repo, path,
+                    new DeleteFileRequest(commitMessage, currentSha!, branch));
+                return;
+            }
+            catch (NotFoundException) { return; }
+            catch (Exception ex) when (attempt < maxAttempts && IsShaConflict(ex))
+            {
+                await Task.Delay(200 * attempt);
+            }
+        }
+    }
+
     private async Task UploadEmptyFileViaGitDataAsync(string owner, string repo, string path, string commitMessage, string branch)
     {
         var client = _client!;
