@@ -21,6 +21,7 @@ public partial class RepoDetailViewModel : ObservableObject, IDisposable
     public RepoItem Repo { get; }
     public UploadTabViewModel Upload { get; }
     public WatchTabViewModel Watch { get; }
+    public FilesTabViewModel Files { get; }
     public ReadmeTabViewModel Readme { get; }
     public HistoryTabViewModel History { get; }
     public IssuesTabViewModel Issues { get; }
@@ -54,6 +55,7 @@ public partial class RepoDetailViewModel : ObservableObject, IDisposable
         Func<string> branchAccessor = () => CurrentBranch;
         Upload = new UploadTabViewModel(github, repo, branchAccessor);
         Watch = new WatchTabViewModel(github, repo, branchAccessor);
+        Files = new FilesTabViewModel(github, repo, branchAccessor);
         Readme = new ReadmeTabViewModel(github, repo, branchAccessor);
         History = new HistoryTabViewModel(github, repo, branchAccessor);
         Issues = new IssuesTabViewModel(github, repo);
@@ -66,6 +68,29 @@ public partial class RepoDetailViewModel : ObservableObject, IDisposable
     private void OpenInBrowser()
     {
         try { Process.Start(new ProcessStartInfo { FileName = Repo.HtmlUrl, UseShellExecute = true }); }
+        catch { }
+    }
+
+    [RelayCommand]
+    private void Clone()
+    {
+        var clone = _github.CreateCloneService();
+        if (clone == null) return;
+        var dlg = new GitUI.Views.Dialogs.CloneDialog(clone, Repo, Branches, CurrentBranch)
+        {
+            Owner = System.Windows.Application.Current.MainWindow
+        };
+        dlg.ShowDialog();
+    }
+
+    [RelayCommand]
+    private void CopyCloneUrl()
+    {
+        try
+        {
+            Clipboard.SetText($"https://github.com/{Repo.FullName}.git");
+            StatusMessage = "Clone URL이 클립보드에 복사되었습니다.";
+        }
         catch { }
     }
 
@@ -130,13 +155,14 @@ public partial class RepoDetailViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedTabIndexChanged(int value)
     {
-        // Lazy-load tab content
+        // Lazy-load tab content. Tab order: 0 Upload, 1 Watch, 2 Files, 3 README, 4 History, 5 Issues, 6 Settings
         switch (value)
         {
-            case 2 when !Readme.Loaded: _ = Readme.LoadAsync(); break;
-            case 3 when !History.Loaded: _ = History.LoadAsync(); break;
-            case 4 when !Issues.Loaded: _ = Issues.LoadAsync(); break;
-            case 5 when !Settings.Loaded: _ = Settings.LoadAsync(); break;
+            case 2 when !Files.Loaded: _ = Files.LoadTreeAsync(); break;
+            case 3 when !Readme.Loaded: _ = Readme.LoadAsync(); break;
+            case 4 when !History.Loaded: _ = History.LoadAsync(); break;
+            case 5 when !Issues.Loaded: _ = Issues.LoadAsync(); break;
+            case 6 when !Settings.Loaded: _ = Settings.LoadAsync(); break;
         }
     }
 
