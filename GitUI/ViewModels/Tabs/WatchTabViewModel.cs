@@ -91,7 +91,8 @@ public partial class WatchTabViewModel : ObservableObject, IDisposable
             CommitMessage: string.IsNullOrWhiteSpace(CommitMessage) ? "Auto-sync via GitUI" : CommitMessage,
             TargetSubpath: TargetSubpath ?? "",
             DebounceSeconds: Math.Max(1, DebounceSeconds),
-            RespectGitignore: RespectGitignore);
+            RespectGitignore: RespectGitignore,
+            MirrorDeletions: MirrorDeletions);
 
         WatchManager.Instance.Start(config);
     }
