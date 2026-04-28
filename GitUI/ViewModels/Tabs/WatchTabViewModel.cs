@@ -18,6 +18,7 @@ public partial class WatchTabViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _commitMessage = "Auto-sync via GitUI";
     [ObservableProperty] private string _targetSubpath = "";
     [ObservableProperty] private bool _respectGitignore = true;
+    [ObservableProperty] private bool _mirrorDeletions = true;
     [ObservableProperty] private bool _isRunning;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string? _statusMessage;
