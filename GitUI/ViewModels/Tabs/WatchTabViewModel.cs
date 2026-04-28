@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GitUI.Models;
@@ -25,6 +26,9 @@ public partial class WatchTabViewModel : ObservableObject, IDisposable
     [ObservableProperty] private int _debounceSeconds = 3;
     [ObservableProperty] private ObservableCollection<string> _eventLog = new();
 
+    private bool _suppressSave;
+    private bool _folderHealthChecked;
+
     public WatchTabViewModel(GitHubService github, RepoItem repo, Func<string> currentBranch)
     {
         _github = github;
@@ -38,26 +42,89 @@ public partial class WatchTabViewModel : ObservableObject, IDisposable
 
     private void ReloadFromManager()
     {
-        var existing = WatchManager.Instance.Get(Repo.FullName);
-        if (existing != null)
+        _suppressSave = true;
+        try
         {
-            IsRunning = true;
-            SelectedFolder = existing.Config.FolderPath;
-            CommitMessage = existing.Config.CommitMessage;
-            TargetSubpath = existing.Config.TargetSubpath;
-            DebounceSeconds = existing.Config.DebounceSeconds;
-            RespectGitignore = existing.Config.RespectGitignore;
-            MirrorDeletions = existing.Config.MirrorDeletions;
-            EventLog = existing.Log;
-            StatusMessage = $"감시 중 · 디바운스 {DebounceSeconds}초 · 창을 닫아도 계속 동작합니다";
+            var existing = WatchManager.Instance.Get(Repo.FullName);
+            if (existing != null)
+            {
+                // Active watch wins — show its live config & log.
+                IsRunning = true;
+                SelectedFolder = existing.Config.FolderPath;
+                CommitMessage = existing.Config.CommitMessage;
+                TargetSubpath = existing.Config.TargetSubpath;
+                DebounceSeconds = existing.Config.DebounceSeconds;
+                RespectGitignore = existing.Config.RespectGitignore;
+                MirrorDeletions = existing.Config.MirrorDeletions;
+                EventLog = existing.Log;
+                StatusMessage = $"감시 중 · 디바운스 {DebounceSeconds}초 · 창을 닫아도 계속 동작합니다";
+            }
+            else
+            {
+                // Not watching — restore last preferences from per-repo settings.
+                IsRunning = false;
+                var p = RepoSettingsStore.Get(Repo.FullName);
+                SelectedFolder = p.WatchFolder;
+                TargetSubpath = p.WatchTargetSubpath ?? "";
+                CommitMessage = string.IsNullOrEmpty(p.WatchCommitMessage)
+                    ? "Auto-sync via GitUI" : p.WatchCommitMessage;
+                DebounceSeconds = p.WatchDebounceSeconds;
+                RespectGitignore = p.WatchRespectGitignore;
+                MirrorDeletions = p.WatchMirrorDeletions;
+                EventLog = new ObservableCollection<string>();
+                StatusMessage = null;
+            }
         }
-        else
-        {
-            IsRunning = false;
-            // Keep last entered values; clear log since it's per-instance.
-            EventLog = new ObservableCollection<string>();
-            StatusMessage = null;
-        }
+        finally { _suppressSave = false; }
+    }
+
+    private void SavePrefs()
+    {
+        if (_suppressSave) return;
+        // Don't overwrite the active watch's config with the editable VM state —
+        // active state lives in WatchManager and persists separately.
+        if (IsRunning) return;
+        var p = RepoSettingsStore.Get(Repo.FullName);
+        p.WatchFolder = SelectedFolder;
+        p.WatchTargetSubpath = TargetSubpath;
+        p.WatchCommitMessage = CommitMessage;
+        p.WatchDebounceSeconds = DebounceSeconds;
+        p.WatchRespectGitignore = RespectGitignore;
+        p.WatchMirrorDeletions = MirrorDeletions;
+        RepoSettingsStore.Save();
+    }
+
+    partial void OnSelectedFolderChanged(string? value) => SavePrefs();
+    partial void OnTargetSubpathChanged(string value) => SavePrefs();
+    partial void OnCommitMessageChanged(string value) => SavePrefs();
+    partial void OnRespectGitignoreChanged(bool value) => SavePrefs();
+    partial void OnMirrorDeletionsChanged(bool value) => SavePrefs();
+    partial void OnDebounceSecondsChanged(int value) => SavePrefs();
+
+    /// <summary>
+    /// Called by the View on Loaded. Prompts the user once if the saved folder is gone.
+    /// Skips the prompt when a watch is actively running (the watch survived → folder was OK).
+    /// </summary>
+    public void VerifyFolderHealth()
+    {
+        if (_folderHealthChecked) return;
+        _folderHealthChecked = true;
+        if (IsRunning) return;
+
+        var folder = SelectedFolder;
+        if (string.IsNullOrEmpty(folder)) return;
+        if (Directory.Exists(folder)) return;
+
+        var result = MessageBox.Show(
+            $"이 리포지토리에 저장된 감시 폴더를 찾을 수 없습니다.\n\n경로: {folder}\n\n새 폴더를 선택하시겠습니까?",
+            $"{Repo.Name} · 감시 폴더 없음",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.Yes)
+            PickFolder();
+        else if (result == MessageBoxResult.No)
+            SelectedFolder = null;
     }
 
     [RelayCommand]
