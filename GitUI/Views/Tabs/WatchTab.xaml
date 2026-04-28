@@ -19,9 +19,12 @@
                 BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
                 BorderThickness="1">
             <StackPanel>
-                <TextBlock Text="자동 폴더 감시" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                <TextBlock Text="폴더의 파일이 바뀌면 디바운스 후 자동으로 변경분만 푸시합니다."
-                           Opacity="0.6" FontSize="12" Margin="0,0,0,12" TextWrapping="Wrap"/>
+                <TextBlock Text="자동 폴더 감시 (풀오토)" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="12" Margin="0,0,0,12">
+                    <Run Text="감시 시작하면 창을 닫아도 트레이에서 계속 동작합니다."/>
+                    <LineBreak/>
+                    <Run Text="앱 종료 후 다시 켜도, Windows 재부팅 후에도 자동으로 재개됩니다."/>
+                </TextBlock>
 
                 <Grid Margin="0,0,0,12">
                     <Grid.ColumnDefinitions>
