@@ -26,6 +26,12 @@ public class GitHubService
     public string? AvatarUrl => _user?.AvatarUrl;
     public IGitHubClient? Client => _client;
 
+    public CloneService? CreateCloneService()
+    {
+        if (_token == null || _user == null) return null;
+        return new CloneService(_token, _user.Login);
+    }
+
     // ---- Auth ---------------------------------------------------------------
 
     public async Task<bool> AuthenticateAsync(string token)
@@ -60,6 +66,35 @@ public class GitHubService
 
     // ---- Repositories -------------------------------------------------------
 
+    /// <summary>
+    /// Searches public repositories on GitHub using the Search API.
+    /// </summary>
+    public async Task<(IReadOnlyList<Repository> items, int totalCount, bool incomplete)> SearchRepositoriesAsync(
+        string query, string? language, string sort, int page, int perPage = 25)
+    {
+        Require();
+        var fullQuery = string.IsNullOrEmpty(language) || language == "any"
+            ? query
+            : $"{query} language:{language}";
+
+        var req = new SearchRepositoriesRequest(fullQuery)
+        {
+            PerPage = perPage,
+            Page = page,
+            Order = SortDirection.Descending
+        };
+        req.SortField = sort switch
+        {
+            "stars" => RepoSearchSort.Stars,
+            "forks" => RepoSearchSort.Forks,
+            "updated" => RepoSearchSort.Updated,
+            _ => null
+        };
+
+        var result = await _client!.Search.SearchRepo(req);
+        return (result.Items, result.TotalCount, result.IncompleteResults);
+    }
+
     public async Task<IReadOnlyList<Repository>> GetRepositoriesAsync()
     {
         if (_client == null) return Array.Empty<Repository>();
@@ -75,6 +110,47 @@ public class GitHubService
     {
         Require();
         return await _client!.Repository.Create(newRepo);
+    }
+
+    /// <summary>
+    /// Fetches the full list of supported .gitignore templates from GitHub
+    /// (~80 templates including most popular languages and frameworks).
+    /// </summary>
+    public async Task<IReadOnlyList<string>> GetGitignoreTemplatesAsync()
+    {
+        Require();
+        try
+        {
+            return await _client!.GitIgnore.GetAllGitIgnoreTemplates();
+        }
+        catch
+        {
+            return new[] { "C", "C++", "Go", "Java", "Node", "Python", "Rust", "Unity", "VisualStudio" };
+        }
+    }
+
+    /// <summary>
+    /// Fetches the list of available license keys.
+    /// </summary>
+    public async Task<IReadOnlyList<(string key, string name)>> GetLicenseTemplatesAsync()
+    {
+        Require();
+        try
+        {
+            var licenses = await _client!.Licenses.GetAllLicenses();
+            return licenses.Select(l => (l.Key, l.Name)).ToArray();
+        }
+        catch
+        {
+            return new[]
+            {
+                ("mit", "MIT"),
+                ("apache-2.0", "Apache 2.0"),
+                ("gpl-3.0", "GPL 3.0"),
+                ("bsd-3-clause", "BSD 3-Clause"),
+                ("unlicense", "Unlicense")
+            };
+        }
     }
 
     public async Task DeleteRepositoryAsync(string owner, string name)
@@ -254,6 +330,48 @@ public class GitHubService
         return await _client!.Repository.Release.GetAll(owner, repo);
     }
 
+    /// <summary>
+    /// Auto-generates release notes via GitHub API based on commits/PRs since the previous tag.
+    /// </summary>
+    public async Task<(string name, string body)> GenerateReleaseNotesAsync(
+        string owner, string repo, string tag, string? previousTag, string targetBranch)
+    {
+        Require();
+        var req = new GenerateReleaseNotesRequest(tag)
+        {
+            TargetCommitish = targetBranch,
+            PreviousTagName = previousTag
+        };
+        var result = await _client!.Repository.Release.GenerateReleaseNotes(owner, repo, req);
+        return (result.Name, result.Body);
+    }
+
+    public async Task<string?> GetLatestReleaseTagAsync(string owner, string repo)
+    {
+        Require();
+        try
+        {
+            var releases = await _client!.Repository.Release.GetAll(owner, repo,
+                new ApiOptions { PageCount = 1, PageSize = 5 });
+            return releases.FirstOrDefault()?.TagName;
+        }
+        catch { return null; }
+    }
+
+    public async Task<ReleaseAsset> UploadReleaseAssetAsync(
+        Release release, string fileName, byte[] data, string? contentType = null)
+    {
+        Require();
+        using var stream = new MemoryStream(data);
+        var upload = new ReleaseAssetUpload
+        {
+            FileName = fileName,
+            ContentType = contentType ?? "application/octet-stream",
+            RawData = stream
+        };
+        return await _client!.Repository.Release.UploadAsset(release, upload);
+    }
+
     // ---- GitHub Pages -------------------------------------------------------
 
     public async Task<(bool enabled, string? url)> GetPagesStatusAsync(string owner, string repo)
@@ -305,6 +423,45 @@ public class GitHubService
             var msg = await resp.Content.ReadAsStringAsync();
             throw new InvalidOperationException($"Pages 비활성화 실패: {(int)resp.StatusCode} {msg}");
         }
+    }
+
+    // ---- File browsing & download ------------------------------------------
+
+    public async Task<TreeResponse> GetRepoTreeAsync(string owner, string repo, string branch)
+    {
+        Require();
+        var reference = await _client!.Git.Reference.Get(owner, repo, $"heads/{branch}");
+        var commit = await _client.Git.Commit.Get(owner, repo, reference.Object.Sha);
+        return await _client.Git.Tree.GetRecursive(owner, repo, commit.Tree.Sha);
+    }
+
+    /// <summary>
+    /// Reads a single file's contents. Falls back to the Git Blob API when the file is too
+    /// large for the Contents API to inline (>1MB).
+    /// </summary>
+    public async Task<byte[]> GetFileBytesAsync(string owner, string repo, string path, string branch)
+    {
+        Require();
+        var contents = await _client!.Repository.Content.GetAllContentsByRef(owner, repo, path, branch);
+        var f = contents.FirstOrDefault();
+        if (f == null) throw new FileNotFoundException(path);
+        if (!string.IsNullOrEmpty(f.EncodedContent))
+            return Convert.FromBase64String(f.EncodedContent);
+        var blob = await _client.Git.Blob.Get(owner, repo, f.Sha);
+        return Convert.FromBase64String(blob.Content);
+    }
+
+    public async Task<byte[]> GetBlobBytesAsync(string owner, string repo, string sha)
+    {
+        Require();
+        var blob = await _client!.Git.Blob.Get(owner, repo, sha);
+        return Convert.FromBase64String(blob.Content);
+    }
+
+    public async Task<byte[]> DownloadRepoArchiveAsync(string owner, string repo, string branch)
+    {
+        Require();
+        return await _client!.Repository.Content.GetArchive(owner, repo, ArchiveFormat.Zipball, branch);
     }
 
     // ---- Clipboard image upload --------------------------------------------
