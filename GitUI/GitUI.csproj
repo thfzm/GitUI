@@ -9,7 +9,12 @@
     <RootNamespace>GitUI</RootNamespace>
     <AssemblyName>GitUI</AssemblyName>
     <LangVersion>latest</LangVersion>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="icon.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Octokit" Version="13.0.1" />
