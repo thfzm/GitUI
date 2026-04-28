@@ -26,6 +26,9 @@
         <DataTemplate DataType="{x:Type vm:RepoDetailViewModel}">
             <views:RepoDetailView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SearchViewModel}">
+            <views:SearchView/>
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:LoginViewModel}">
             <views:LoginView/>
         </DataTemplate>
@@ -150,16 +153,25 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <Button Grid.Row="0"
-                                Command="{Binding ShowCreateRepoCommand}"
-                                Style="{StaticResource AccentButtonStyle}"
-                                Margin="12,12,12,8" Height="36"
-                                ToolTip="Ctrl+N">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="＋" FontSize="14" Margin="0,0,6,0"/>
-                                <TextBlock Text="새 리포지토리" FontWeight="SemiBold"/>
-                            </StackPanel>
-                        </Button>
+                        <StackPanel Grid.Row="0" Margin="12,12,12,8">
+                            <Button Command="{Binding ShowCreateRepoCommand}"
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    Height="36" Margin="0,0,0,6"
+                                    ToolTip="Ctrl+N">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="＋" FontSize="14" Margin="0,0,6,0"/>
+                                    <TextBlock Text="새 리포지토리" FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Command="{Binding ShowSearchCommand}"
+                                    Height="34"
+                                    ToolTip="GitHub의 모든 공개 리포 검색">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="🔍" Margin="0,0,6,0"/>
+                                    <TextBlock Text="외부 리포 검색"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
 
                         <Grid Grid.Row="1" Margin="12,0,12,8">
                             <Grid.ColumnDefinitions>
