@@ -9,10 +9,8 @@
              mc:Ignorable="d">
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="32">
         <StackPanel MaxWidth="640" HorizontalAlignment="Stretch">
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <TextBlock Text="새 리포지토리"
-                           FontSize="28" FontWeight="SemiBold"/>
-            </StackPanel>
+            <TextBlock Text="새 리포지토리"
+                       FontSize="28" FontWeight="SemiBold" Margin="0,0,0,4"/>
             <TextBlock Text="GitHub에 새로운 리포지토리를 만듭니다."
                        Opacity="0.6" Margin="0,0,0,28"/>
 
@@ -31,22 +29,49 @@
                              ui:ControlHelper.PlaceholderText="(선택) 한 줄 설명"
                              Margin="0,0,0,16"/>
 
+                    <!-- Project starter template -->
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="프로젝트 스타터" Opacity="0.75" FontSize="12" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Text="언어별 시작 파일 자동 생성" Opacity="0.5" FontSize="10" VerticalAlignment="Center"/>
+                    </Grid>
+                    <ComboBox ItemsSource="{Binding ProjectTemplateOptions}"
+                              SelectedItem="{Binding SelectedProjectTemplate}"
+                              DisplayMemberPath="DisplayName"
+                              HorizontalAlignment="Stretch"
+                              Margin="0,4,0,16"/>
+
                     <Grid Margin="0,0,0,16">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                            <TextBlock Text=".gitignore 템플릿" Opacity="0.75" FontSize="12" Margin="0,0,0,4"/>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text=".gitignore 템플릿" Opacity="0.75" FontSize="12"/>
+                                <ui:ProgressRing Grid.Column="1"
+                                                 IsActive="True" Width="12" Height="12"
+                                                 Visibility="{Binding TemplatesLoaded, Converter={StaticResource InverseBoolToVis}}"/>
+                            </Grid>
                             <ComboBox ItemsSource="{Binding GitignoreTemplates}"
                                       SelectedItem="{Binding GitignoreTemplate}"
-                                      HorizontalAlignment="Stretch"/>
+                                      HorizontalAlignment="Stretch"
+                                      MaxDropDownHeight="320"/>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Margin="8,0,0,0">
                             <TextBlock Text="라이선스" Opacity="0.75" FontSize="12" Margin="0,0,0,4"/>
-                            <ComboBox ItemsSource="{Binding LicenseTemplates}"
-                                      SelectedItem="{Binding LicenseTemplate}"
-                                      HorizontalAlignment="Stretch"/>
+                            <ComboBox ItemsSource="{Binding Licenses}"
+                                      SelectedItem="{Binding SelectedLicense}"
+                                      DisplayMemberPath="DisplayName"
+                                      HorizontalAlignment="Stretch"
+                                      MaxDropDownHeight="320"/>
                         </StackPanel>
                     </Grid>
 
@@ -59,8 +84,7 @@
 
                     <Button Command="{Binding CreateCommand}"
                             Style="{StaticResource AccentButtonStyle}"
-                            Height="40"
-                            HorizontalAlignment="Stretch">
+                            Height="40" HorizontalAlignment="Stretch">
                         <StackPanel Orientation="Horizontal">
                             <ui:ProgressRing IsActive="{Binding IsBusy}"
                                              Width="16" Height="16" Margin="0,0,8,0"
@@ -69,12 +93,16 @@
                         </StackPanel>
                     </Button>
 
+                    <!-- Progress for starter file uploads -->
+                    <StackPanel Margin="0,12,0,0"
+                                Visibility="{Binding ProgressLabel, Converter={StaticResource NotNullToVis}}">
+                        <TextBlock Text="{Binding ProgressLabel}" FontSize="11" Opacity="0.75" Margin="0,0,0,4"/>
+                        <ProgressBar Value="{Binding Progress}" Maximum="100" Height="4"/>
+                    </StackPanel>
+
                     <TextBlock Text="{Binding StatusMessage}"
                                Visibility="{Binding StatusMessage, Converter={StaticResource NotNullToVis}}"
-                               Margin="0,12,0,0"
-                               TextWrapping="Wrap"
-                               Opacity="0.75"
-                               FontSize="12"/>
+                               Margin="0,12,0,0" TextWrapping="Wrap" Opacity="0.75" FontSize="12"/>
                 </StackPanel>
             </Border>
         </StackPanel>
