@@ -14,7 +14,8 @@ public record WatchConfig(
     string CommitMessage,
     string TargetSubpath,
     int DebounceSeconds,
-    bool RespectGitignore);
+    bool RespectGitignore,
+    bool MirrorDeletions = true);
 
 public static class WatchConfigStorage
 {
