@@ -25,7 +25,14 @@
                              ui:ControlHelper.PlaceholderText="예: assets/images" Margin="0,0,0,12"/>
 
                     <CheckBox IsChecked="{Binding RespectGitignore}"
-                              Content="로컬 .gitignore 적용 (제외 패턴 따르기)"/>
+                              Content="로컬 .gitignore 적용 (제외 패턴 따르기)"
+                              Margin="0,0,0,4"/>
+                    <CheckBox IsChecked="{Binding MirrorDeletions}">
+                        <StackPanel>
+                            <TextBlock Text="삭제도 미러링 (로컬에서 사라진 파일 → 원격에서도 삭제)"/>
+                            <TextBlock Text="끄면 추가/수정만 업로드 (원격 파일은 유지)" Opacity="0.5" FontSize="10"/>
+                        </StackPanel>
+                    </CheckBox>
                 </StackPanel>
             </Border>
 
