@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "dgSpecHash": "h/74LvHH9Lo=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\KRSYPARK\\Desktop\\Sources\\GitUI\\GitUI\\GitUI.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\KRSYPARK\\.nuget\\packages\\communitytoolkit.mvvm\\8.3.2\\communitytoolkit.mvvm.8.3.2.nupkg.sha512",
+    "C:\\Users\\KRSYPARK\\.nuget\\packages\\hardcodet.notifyicon.wpf\\2.0.1\\hardcodet.notifyicon.wpf.2.0.1.nupkg.sha512",
+    "C:\\Users\\KRSYPARK\\.nuget\\packages\\libgit2sharp\\0.30.0\\libgit2sharp.0.30.0.nupkg.sha512",
+    "C:\\Users\\KRSYPARK\\.nuget\\packages\\libgit2sharp.nativebinaries\\2.0.322\\libgit2sharp.nativebinaries.2.0.322.nupkg.sha512",
+    "C:\\Users\\KRSYPARK\\.nuget\\packages\\modernwpfui\\0.9.6\\modernwpfui.0.9.6.nupkg.sha512",
+    "C:\\Users\\KRSYPARK\\.nuget\\packages\\octokit\\13.0.1\\octokit.13.0.1.nupkg.sha512",
+    "C:\\Users\\KRSYPARK\\.nuget\\packages\\microsoft.netcore.app.ref\\8.0.26\\microsoft.netcore.app.ref.8.0.26.nupkg.sha512",
+    "C:\\Users\\KRSYPARK\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\8.0.26\\microsoft.windowsdesktop.app.ref.8.0.26.nupkg.sha512",
+    "C:\\Users\\KRSYPARK\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\8.0.26\\microsoft.aspnetcore.app.ref.8.0.26.nupkg.sha512",
+    "C:\\Users\\KRSYPARK\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\8.0.26\\microsoft.netcore.app.host.win-x64.8.0.26.nupkg.sha512"
+  ],
+  "logs": []
+}
