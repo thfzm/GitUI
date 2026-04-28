@@ -203,21 +203,51 @@ public class GitHubService
 
         var base64 = Convert.ToBase64String(content);
 
-        try
+        // Retry on SHA-mismatch conflicts (409/422). These happen when the file was
+        // updated between our GetAllContentsByRef and our UpdateFile call —
+        // e.g. concurrent sync, multiple watchers, or GitHub-side replication delay.
+        const int maxAttempts = 5;
+        for (int attempt = 1; ; attempt++)
         {
-            var existing = await _client!.Repository.Content.GetAllContentsByRef(owner, repo, path, branch);
-            var existingFile = existing.FirstOrDefault();
-            if (existingFile != null)
+            try
             {
-                await _client.Repository.Content.UpdateFile(owner, repo, path,
-                    new UpdateFileRequest(commitMessage, base64, existingFile.Sha, branch, false));
+                try
+                {
+                    var existing = await _client!.Repository.Content.GetAllContentsByRef(owner, repo, path, branch);
+                    var existingFile = existing.FirstOrDefault();
+                    if (existingFile != null)
+                    {
+                        await _client.Repository.Content.UpdateFile(owner, repo, path,
+                            new UpdateFileRequest(commitMessage, base64, existingFile.Sha, branch, false));
+                        return;
+                    }
+                }
+                catch (NotFoundException) { /* file does not exist, fall through to create */ }
+
+                await _client!.Repository.Content.CreateFile(owner, repo, path,
+                    new CreateFileRequest(commitMessage, base64, branch, false));
                 return;
             }
+            catch (Exception ex) when (attempt < maxAttempts && IsShaConflict(ex))
+            {
+                // Stale SHA — wait briefly, then refetch and retry. Backoff up to ~1.5s.
+                await Task.Delay(200 * attempt);
+            }
         }
-        catch (NotFoundException) { }
+    }
 
-        await _client!.Repository.Content.CreateFile(owner, repo, path,
-            new CreateFileRequest(commitMessage, base64, branch, false));
+    private static bool IsShaConflict(Exception ex)
+    {
+        // Octokit can surface SHA mismatches as ApiValidationException (422) or ApiException (409),
+        // and the message format is typically "... is at <sha> but expected <sha>".
+        if (ex is ApiException api)
+        {
+            var code = (int)api.StatusCode;
+            if (code == 409 || code == 422) return true;
+        }
+        var msg = ex.Message ?? "";
+        return msg.Contains("is at", StringComparison.OrdinalIgnoreCase)
+            && msg.Contains("expected", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task UploadEmptyFileViaGitDataAsync(string owner, string repo, string path, string commitMessage, string branch)
