@@ -52,7 +52,19 @@
                         Visibility="Collapsed">
             <tb:TaskbarIcon.ContextMenu>
                 <ContextMenu>
-                    <MenuItem Header="GitUI 열기" Click="ShowFromTray_Click"/>
+                    <MenuItem Header="GitUI 열기" Click="ShowFromTray_Click" FontWeight="Bold"/>
+                    <Separator/>
+                    <MenuItem x:Name="WatchCountMenuItem"
+                              Header="감시 중: 0개"
+                              IsEnabled="False"/>
+                    <MenuItem x:Name="StopAllWatchesMenuItem"
+                              Header="모든 감시 중지"
+                              Click="StopAllWatches_Click"/>
+                    <Separator/>
+                    <MenuItem x:Name="AutoStartMenuItem"
+                              Header="Windows 시작 시 자동 실행"
+                              IsCheckable="True"
+                              Click="AutoStart_Click"/>
                     <Separator/>
                     <MenuItem Header="종료" Click="ExitFromTray_Click"/>
                 </ContextMenu>
@@ -125,6 +137,16 @@
                             <TextBlock Text="{Binding Username}" FontWeight="SemiBold" FontSize="13"/>
                             <TextBlock Text="{Binding AuthMethodLabel}" FontSize="10" Opacity="0.6"/>
                         </StackPanel>
+                        <ToggleButton IsChecked="{Binding AutoStartEnabled}"
+                                      Command="{Binding ToggleAutoStartCommand}"
+                                      Background="Transparent" BorderThickness="0"
+                                      Margin="0,0,4,0" FontSize="12"
+                                      ToolTip="Windows 시작 시 자동 실행 (트레이로)">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⚡" FontSize="11" Margin="0,0,4,0"/>
+                                <TextBlock Text="자동 시작"/>
+                            </StackPanel>
+                        </ToggleButton>
                         <Button Command="{Binding LogoutCommand}" Content="로그아웃"
                                 Background="Transparent" BorderThickness="0" FontSize="12"/>
                     </StackPanel>
