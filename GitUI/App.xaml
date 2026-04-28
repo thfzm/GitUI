@@ -20,6 +20,9 @@
                                       FalseBrush="#4CC2FF" />
             <conv:EnumToVisibilityConverter x:Key="EnumToVis" />
             <conv:MultiSelectModeConverter x:Key="MultiSelectModeConverter" />
+            <conv:InverseBoolConverter x:Key="InverseBoolEnableConverter" />
+            <conv:BoolToFolderFileConverter x:Key="BoolToFolderFile" />
+            <conv:ZeroToVisibilityConverter x:Key="ZeroToVis" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>
