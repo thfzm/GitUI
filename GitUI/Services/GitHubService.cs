@@ -192,6 +192,15 @@ public class GitHubService
     {
         Require();
         path = path.Replace('\\', '/').TrimStart('/');
+
+        // Octokit's Contents API rejects empty content (CreateFileRequest validates non-empty).
+        // Use the Git Data API path to preserve genuinely empty files like __init__.py / .gitkeep.
+        if (content.Length == 0)
+        {
+            await UploadEmptyFileViaGitDataAsync(owner, repo, path, commitMessage, branch);
+            return;
+        }
+
         var base64 = Convert.ToBase64String(content);
 
         try
@@ -209,6 +218,38 @@ public class GitHubService
 
         await _client!.Repository.Content.CreateFile(owner, repo, path,
             new CreateFileRequest(commitMessage, base64, branch, false));
+    }
+
+    private async Task UploadEmptyFileViaGitDataAsync(string owner, string repo, string path, string commitMessage, string branch)
+    {
+        var client = _client!;
+
+        // 1. Create an empty blob.
+        var blob = await client.Git.Blob.Create(owner, repo, new NewBlob
+        {
+            Content = "",
+            Encoding = EncodingType.Utf8
+        });
+
+        // 2. Get the latest commit on the target branch.
+        var reference = await client.Git.Reference.Get(owner, repo, $"heads/{branch}");
+        var latestCommit = await client.Git.Commit.Get(owner, repo, reference.Object.Sha);
+
+        // 3. Build a new tree based on the latest, with the empty blob at `path`.
+        var newTree = new NewTree { BaseTree = latestCommit.Tree.Sha };
+        newTree.Tree.Add(new NewTreeItem
+        {
+            Path = path,
+            Mode = "100644",
+            Type = TreeType.Blob,
+            Sha = blob.Sha
+        });
+        var tree = await client.Git.Tree.Create(owner, repo, newTree);
+
+        // 4. Create the commit and advance the branch ref.
+        var newCommit = new NewCommit(commitMessage, tree.Sha, latestCommit.Sha);
+        var commit = await client.Git.Commit.Create(owner, repo, newCommit);
+        await client.Git.Reference.Update(owner, repo, $"heads/{branch}", new ReferenceUpdate(commit.Sha));
     }
 
     public async Task UploadFolderAsync(
