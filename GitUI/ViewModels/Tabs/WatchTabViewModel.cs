@@ -47,6 +47,7 @@ public partial class WatchTabViewModel : ObservableObject, IDisposable
             TargetSubpath = existing.Config.TargetSubpath;
             DebounceSeconds = existing.Config.DebounceSeconds;
             RespectGitignore = existing.Config.RespectGitignore;
+            MirrorDeletions = existing.Config.MirrorDeletions;
             EventLog = existing.Log;
             StatusMessage = $"감시 중 · 디바운스 {DebounceSeconds}초 · 창을 닫아도 계속 동작합니다";
         }
