@@ -66,6 +66,33 @@ public class GitHubService
 
     // ---- Repositories -------------------------------------------------------
 
+    // ---- Star / Fork --------------------------------------------------------
+
+    public async Task<bool> IsStarredAsync(string owner, string repo)
+    {
+        Require();
+        try { return await _client!.Activity.Starring.CheckStarred(owner, repo); }
+        catch { return false; }
+    }
+
+    public async Task StarAsync(string owner, string repo)
+    {
+        Require();
+        await _client!.Activity.Starring.StarRepo(owner, repo);
+    }
+
+    public async Task UnstarAsync(string owner, string repo)
+    {
+        Require();
+        await _client!.Activity.Starring.RemoveStarFromRepo(owner, repo);
+    }
+
+    public async Task<Repository> ForkAsync(string owner, string repo)
+    {
+        Require();
+        return await _client!.Repository.Forks.Create(owner, repo, new NewRepositoryFork());
+    }
+
     /// <summary>
     /// Searches public repositories on GitHub using the Search API.
     /// </summary>
