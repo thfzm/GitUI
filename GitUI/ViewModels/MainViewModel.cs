@@ -176,7 +176,16 @@ public partial class MainViewModel : ObservableObject
     public void ShowSearch()
     {
         SelectedRepo = null;
-        CurrentContent = new SearchViewModel(_github);
+        CurrentContent = new SearchViewModel(_github, OpenSearchResultInDetail);
+    }
+
+    private void OpenSearchResultInDetail(SearchResultItem item)
+    {
+        // Build a synthetic RepoItem and navigate to the detail view.
+        // The RepoDetailViewModel detects external repos and adapts UI accordingly.
+        var repo = new RepoItem(0, item.Name, item.FullName, item.Description,
+            item.IsPrivate, item.HtmlUrl, item.DefaultBranch);
+        SelectedRepo = repo;
     }
 
     [RelayCommand]
@@ -200,7 +209,7 @@ public partial class MainViewModel : ObservableObject
             {
                 await LoadReposAsync();
                 ShowCreateRepo();
-            });
+            }, onBackToSearch: () => ShowSearch());
             vm.PreviewConfirm = (preview, msg, prefix) =>
             {
                 var dlg = new SyncPreviewDialog(preview, msg) { Owner = Application.Current.MainWindow };
