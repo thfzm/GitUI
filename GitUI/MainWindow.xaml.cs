@@ -180,10 +180,11 @@ public partial class MainWindow : Window
 
     private void AutoStart_Click(object sender, RoutedEventArgs e)
     {
-        if (AutoStart.IsEnabled) AutoStart.Disable();
-        else AutoStart.Enable();
-        AutoStartMenuItem.IsChecked = AutoStart.IsEnabled;
-        if (DataContext is MainViewModel vm) vm.AutoStartEnabled = AutoStart.IsEnabled;
+        if (DataContext is MainViewModel vm)
+        {
+            vm.AutoStartEnabled = !vm.AutoStartEnabled;
+            AutoStartMenuItem.IsChecked = vm.AutoStartEnabled;
+        }
     }
 
     private void ExitFromTray_Click(object sender, RoutedEventArgs e)
