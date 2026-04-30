@@ -55,6 +55,36 @@
                 <TextBlock Text="{Binding Repo.FullName}" Opacity="0.55" FontSize="13" Margin="0,2,0,0"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                <!-- External-only: Back to search results -->
+                <Button Command="{Binding BackToSearchCommand}" Margin="0,0,8,0"
+                        Visibility="{Binding IsExternal, Converter={StaticResource BoolToVis}}"
+                        ToolTip="검색 결과로 돌아가기">
+                    <TextBlock Text="← 검색"/>
+                </Button>
+
+                <!-- Star/Unstar (universal) -->
+                <Button Command="{Binding ToggleStarCommand}" Margin="0,0,8,0">
+                    <TextBlock>
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="☆ Star"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsStarred}" Value="True">
+                                        <Setter Property="Text" Value="⭐ Starred"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Button>
+
+                <!-- Fork (external-only) -->
+                <Button Command="{Binding ForkCommand}" Margin="0,0,8,0"
+                        Visibility="{Binding IsExternal, Converter={StaticResource BoolToVis}}"
+                        ToolTip="내 계정으로 포크">
+                    <TextBlock Text="🍴 포크"/>
+                </Button>
+
                 <Button Command="{Binding CloneCommand}" Margin="0,0,8,0"
                         ToolTip="로컬에 git clone">
                     <TextBlock Text="📥 클론"/>
@@ -68,7 +98,10 @@
                 <Button Command="{Binding OpenInBrowserCommand}" Margin="0,0,8,0">
                     <TextBlock Text="🔗 열기"/>
                 </Button>
+
+                <!-- Owner-only: Delete -->
                 <Button Command="{Binding DeleteRepoCommand}"
+                        Visibility="{Binding IsOwned, Converter={StaticResource BoolToVis}}"
                         Background="#5C2A2A" Foreground="White">
                     <TextBlock Text="🗑 삭제"/>
                 </Button>
@@ -98,19 +131,23 @@
             <TextBox Grid.Column="4" Width="180"
                      Text="{Binding NewBranchName, UpdateSourceTrigger=PropertyChanged}"
                      ui:ControlHelper.PlaceholderText="새 브랜치 이름"
+                     Visibility="{Binding IsOwned, Converter={StaticResource BoolToVis}}"
                      Margin="0,0,8,0"/>
-            <Button Grid.Column="5" Command="{Binding CreateBranchCommand}" Content="생성"/>
+            <Button Grid.Column="5" Command="{Binding CreateBranchCommand}" Content="생성"
+                    Visibility="{Binding IsOwned, Converter={StaticResource BoolToVis}}"/>
         </Grid>
 
-        <!-- Tabs -->
+        <!-- Tabs (Upload/Watch/Settings hidden for external repos) -->
         <TabControl Grid.Row="2" Margin="0,16,0,0"
                     SelectedIndex="{Binding SelectedTabIndex}"
                     Background="Transparent"
                     BorderThickness="0">
-            <TabItem Header="📤 업로드">
+            <TabItem Header="📤 업로드"
+                     Visibility="{Binding IsOwned, Converter={StaticResource BoolToVis}}">
                 <ContentControl Content="{Binding Upload}"/>
             </TabItem>
-            <TabItem Header="👁 자동 감시">
+            <TabItem Header="👁 자동 감시"
+                     Visibility="{Binding IsOwned, Converter={StaticResource BoolToVis}}">
                 <ContentControl Content="{Binding Watch}"/>
             </TabItem>
             <TabItem Header="📁 파일">
@@ -125,7 +162,8 @@
             <TabItem Header="🐛 Issues / PRs">
                 <ContentControl Content="{Binding Issues}"/>
             </TabItem>
-            <TabItem Header="🔧 설정">
+            <TabItem Header="🔧 설정"
+                     Visibility="{Binding IsOwned, Converter={StaticResource BoolToVis}}">
                 <ContentControl Content="{Binding Settings}"/>
             </TabItem>
         </TabControl>
