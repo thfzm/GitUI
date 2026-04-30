@@ -17,8 +17,11 @@ public partial class RepoDetailViewModel : ObservableObject, IDisposable
 {
     private readonly GitHubService _github;
     private readonly Func<Task> _onRepoChanged;
+    private readonly Action? _onBackToSearch;
 
     public RepoItem Repo { get; }
+    public bool IsExternal { get; }
+    public bool IsOwned => !IsExternal;
     public UploadTabViewModel Upload { get; }
     public WatchTabViewModel Watch { get; }
     public FilesTabViewModel Files { get; }
@@ -32,6 +35,7 @@ public partial class RepoDetailViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string? _statusMessage;
     [ObservableProperty] private int _selectedTabIndex;
+    [ObservableProperty] private bool _isStarred;
 
     public ObservableCollection<string> Branches { get; } = new();
 
@@ -44,11 +48,16 @@ public partial class RepoDetailViewModel : ObservableObject, IDisposable
         set => Upload.PreviewConfirm = value;
     }
 
-    public RepoDetailViewModel(GitHubService github, RepoItem repo, Func<Task> onRepoChanged)
+    public RepoDetailViewModel(GitHubService github, RepoItem repo, Func<Task> onRepoChanged, Action? onBackToSearch = null)
     {
         _github = github;
         Repo = repo;
         _onRepoChanged = onRepoChanged;
+        _onBackToSearch = onBackToSearch;
+
+        var owner = repo.FullName.Split('/').FirstOrDefault() ?? "";
+        IsExternal = !string.Equals(owner, github.Username, StringComparison.OrdinalIgnoreCase);
+
         _currentBranch = repo.DefaultBranch;
         Branches.Add(repo.DefaultBranch);
 
@@ -62,7 +71,67 @@ public partial class RepoDetailViewModel : ObservableObject, IDisposable
         Settings = new SettingsTabViewModel(github, repo, branchAccessor, onRepoChanged);
 
         _ = LoadBranchesAsync();
+        _ = LoadStarStatusAsync();
+
+        // External repos default to the Files tab (most useful for browsing).
+        if (IsExternal) SelectedTabIndex = 2;
     }
+
+    private async Task LoadStarStatusAsync()
+    {
+        var owner = Repo.FullName.Split('/')[0];
+        try { IsStarred = await _github.IsStarredAsync(owner, Repo.Name); }
+        catch { }
+    }
+
+    [RelayCommand]
+    private async Task ToggleStarAsync()
+    {
+        var owner = Repo.FullName.Split('/')[0];
+        IsBusy = true;
+        try
+        {
+            if (IsStarred)
+            {
+                await _github.UnstarAsync(owner, Repo.Name);
+                IsStarred = false;
+                StatusMessage = "Star 해제됨.";
+            }
+            else
+            {
+                await _github.StarAsync(owner, Repo.Name);
+                IsStarred = true;
+                StatusMessage = "⭐ Star 완료.";
+            }
+        }
+        catch (Exception ex) { StatusMessage = "오류: " + ex.Message; }
+        finally { IsBusy = false; }
+    }
+
+    [RelayCommand]
+    private async Task ForkAsync()
+    {
+        var owner = Repo.FullName.Split('/')[0];
+        IsBusy = true;
+        StatusMessage = "포크 중... (몇 초 걸릴 수 있습니다)";
+        try
+        {
+            var fork = await _github.ForkAsync(owner, Repo.Name);
+            StatusMessage = $"포크 완료: {fork.FullName}";
+            try
+            {
+                Process.Start(new ProcessStartInfo { FileName = fork.HtmlUrl, UseShellExecute = true });
+            }
+            catch { }
+            // Refresh the user's repo list (the fork now appears).
+            await _onRepoChanged();
+        }
+        catch (Exception ex) { StatusMessage = "오류: " + ex.Message; }
+        finally { IsBusy = false; }
+    }
+
+    [RelayCommand]
+    private void BackToSearch() => _onBackToSearch?.Invoke();
 
     [RelayCommand]
     private void OpenInBrowser()
@@ -155,14 +224,15 @@ public partial class RepoDetailViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedTabIndexChanged(int value)
     {
-        // Lazy-load tab content. Tab order: 0 Upload, 1 Watch, 2 Files, 3 README, 4 History, 5 Issues, 6 Settings
+        // Lazy-load tab content. Tab indices stay the same regardless of which tabs
+        // are visible — hiding owner-only tabs is purely visual.
         switch (value)
         {
             case 2 when !Files.Loaded: _ = Files.LoadTreeAsync(); break;
             case 3 when !Readme.Loaded: _ = Readme.LoadAsync(); break;
             case 4 when !History.Loaded: _ = History.LoadAsync(); break;
             case 5 when !Issues.Loaded: _ = Issues.LoadAsync(); break;
-            case 6 when !Settings.Loaded: _ = Settings.LoadAsync(); break;
+            case 6 when !Settings.Loaded && IsOwned: _ = Settings.LoadAsync(); break;
         }
     }
 
