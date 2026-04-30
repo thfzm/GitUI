@@ -138,16 +138,10 @@
                             <TextBlock Text="{Binding Username}" FontWeight="SemiBold" FontSize="13"/>
                             <TextBlock Text="{Binding AuthMethodLabel}" FontSize="10" Opacity="0.6"/>
                         </StackPanel>
-                        <ToggleButton IsChecked="{Binding AutoStartEnabled}"
-                                      Command="{Binding ToggleAutoStartCommand}"
-                                      Background="Transparent" BorderThickness="0"
-                                      Margin="0,0,4,0" FontSize="12"
-                                      ToolTip="Windows 시작 시 자동 실행 (트레이로)">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="⚡" FontSize="11" Margin="0,0,4,0"/>
-                                <TextBlock Text="자동 시작"/>
-                            </StackPanel>
-                        </ToggleButton>
+                        <ui:ToggleSwitch IsOn="{Binding AutoStartEnabled, Mode=TwoWay}"
+                                         OnContent="⚡ 자동 시작" OffContent="⚡ 자동 시작"
+                                         VerticalAlignment="Center" Margin="0,0,4,0"
+                                         ToolTip="Windows 시작 시 자동 실행 (트레이로)"/>
                         <Button Command="{Binding LogoutCommand}" Content="로그아웃"
                                 Background="Transparent" BorderThickness="0" FontSize="12"/>
                     </StackPanel>
