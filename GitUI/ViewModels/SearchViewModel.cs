@@ -51,6 +51,7 @@ public record SearchResultItem(
 public partial class SearchViewModel : ObservableObject
 {
     private readonly GitHubService _github;
+    private readonly Action<SearchResultItem>? _onOpenDetail;
     private int _page = 1;
 
     [ObservableProperty] private string _query = "";
@@ -79,9 +80,17 @@ public partial class SearchViewModel : ObservableObject
         ("best-match", "✨ Best match")
     };
 
-    public SearchViewModel(GitHubService github)
+    public SearchViewModel(GitHubService github, Action<SearchResultItem>? onOpenDetail = null)
     {
         _github = github;
+        _onOpenDetail = onOpenDetail;
+    }
+
+    [RelayCommand]
+    private void OpenDetail(SearchResultItem? item)
+    {
+        if (item == null) return;
+        _onOpenDetail?.Invoke(item);
     }
 
     [RelayCommand]
