@@ -117,19 +117,10 @@ public partial class MainViewModel : ObservableObject
         Login = new LoginViewModel(OnAuthenticatedAsync);
     }
 
-    [RelayCommand]
-    private void ToggleAutoStart()
+    partial void OnAutoStartEnabledChanged(bool value)
     {
-        if (AutoStartEnabled)
-        {
-            AutoStart.Disable();
-            AutoStartEnabled = false;
-        }
-        else
-        {
-            AutoStart.Enable();
-            AutoStartEnabled = AutoStart.IsEnabled;
-        }
+        if (value) AutoStart.Enable();
+        else AutoStart.Disable();
     }
 
     [RelayCommand]
@@ -316,7 +307,7 @@ public partial class MainViewModel : ObservableObject
             new("↻", "리포 목록 새로고침", null, "Ctrl+R", () => _ = LoadReposAsync()),
             new("🌓", "테마 전환 (다크/라이트)", null, null, () => ToggleTheme()),
             new("⚡", AutoStartEnabled ? "Windows 시작 시 자동 실행 끄기" : "Windows 시작 시 자동 실행 켜기",
-                null, null, () => ToggleAutoStart()),
+                null, null, () => AutoStartEnabled = !AutoStartEnabled),
             new("⏹", $"감시 모두 중지 ({WatchCount}개)", null, null, () => StopAllWatches()),
             new("🚪", "로그아웃", null, null, () => Logout()),
             new("☑", MultiSelectMode ? "다중선택 모드 끄기" : "다중선택 모드 켜기", null, null, () => ToggleMultiSelect()),
