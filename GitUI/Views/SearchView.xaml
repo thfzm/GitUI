@@ -152,11 +152,18 @@
 
                                             <!-- Buttons -->
                                             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">
-                                                <Button Command="{Binding DataContext.CloneCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                <Button Command="{Binding DataContext.OpenDetailCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                         CommandParameter="{Binding}"
                                                         Style="{StaticResource AccentButtonStyle}"
-                                                        Margin="0,0,4,0">
-                                                    <TextBlock Text="📥 클론"/>
+                                                        Margin="0,0,4,0"
+                                                        ToolTip="파일·README·히스토리 보기">
+                                                    <TextBlock Text="📂 자세히"/>
+                                                </Button>
+                                                <Button Command="{Binding DataContext.CloneCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Margin="0,0,4,0"
+                                                        ToolTip="로컬에 git clone">
+                                                    <TextBlock Text="📥"/>
                                                 </Button>
                                                 <Button Command="{Binding DataContext.OpenInBrowserCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                         CommandParameter="{Binding}"
