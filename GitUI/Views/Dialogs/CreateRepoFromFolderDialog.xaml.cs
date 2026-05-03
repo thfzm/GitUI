@@ -57,15 +57,24 @@ public partial class CreateRepoFromFolderDialog : Window
                 : new GitignoreMatcher(_folderPath, Array.Empty<string>());
 
             var files = System.Linq.Enumerable.ToArray(GitHubService.EnumerateFiles(_folderPath, matcher));
+            var upserts = new System.Collections.Generic.List<(string path, byte[] content)>(files.Length);
             for (int i = 0; i < files.Length; i++)
             {
                 var f = files[i];
                 var rel = Path.GetRelativePath(_folderPath, f).Replace('\\', '/');
-                StatusLabel.Text = $"{i + 1}/{files.Length} · {rel}";
-                Progress.Value = (double)(i + 1) / files.Length * 100;
+                StatusLabel.Text = $"읽는 중 {i + 1}/{files.Length} · {rel}";
                 var content = await File.ReadAllBytesAsync(f);
-                await _github.UploadFileAsync(owner, repo.Name, rel, content, "Initial upload via GitUI", branch);
+                upserts.Add((rel, content));
             }
+            StatusLabel.Text = $"GitHub에 {upserts.Count}개 파일을 1커밋으로 푸시 중...";
+            var prog = new Progress<(int current, int total, string filename)>(t =>
+            {
+                StatusLabel.Text = $"{t.current}/{t.total} · {t.filename}";
+                Progress.Value = (double)t.current / Math.Max(1, t.total) * 100;
+            });
+            await _github.BulkCommitAsync(owner, repo.Name, branch,
+                "Initial upload via GitUI", upserts, Array.Empty<string>(), prog,
+                notify: m => Dispatcher.Invoke(() => StatusLabel.Text = m));
 
             Created = repo;
             DialogResult = true;

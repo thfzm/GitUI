@@ -119,30 +119,35 @@ public sealed class WatchManager
                 _github.Client!, owner, name, aw.Config.DefaultBranch,
                 aw.Config.FolderPath, prefix);
 
-            int uploaded = 0, removed = 0;
+            var upserts = new List<(string path, byte[] content)>();
+            var deletes = new List<string>();
             foreach (var entry in preview.Entries)
             {
                 if (entry.Change is FileChange.Added or FileChange.Modified)
                 {
                     var bytes = await File.ReadAllBytesAsync(entry.LocalPath);
-                    await _github.UploadFileAsync(owner, name, entry.TargetPath, bytes,
-                        aw.Config.CommitMessage, aw.Config.DefaultBranch);
-                    uploaded++;
+                    upserts.Add((entry.TargetPath, bytes));
                 }
                 else if (entry.Change == FileChange.Deleted && aw.Config.MirrorDeletions)
                 {
-                    await _github.DeleteFileAsync(owner, name, entry.TargetPath, entry.RemoteSha,
-                        aw.Config.CommitMessage, aw.Config.DefaultBranch);
-                    removed++;
+                    deletes.Add(entry.TargetPath);
                 }
             }
+
+            if (upserts.Count > 0 || deletes.Count > 0)
+            {
+                await _github.BulkCommitAsync(owner, name, aw.Config.DefaultBranch,
+                    aw.Config.CommitMessage, upserts, deletes,
+                    notify: m => Dispatch(() => Append(aw, m)));
+            }
+
             aw.LastSyncedAt = DateTime.Now;
             Dispatch(() =>
             {
-                if (uploaded == 0 && removed == 0)
+                if (upserts.Count == 0 && deletes.Count == 0)
                     Append(aw, "[변경 없음]");
                 else
-                    Append(aw, $"[동기화 완료] 업로드 {uploaded} · 삭제 {removed} · 동일 {preview.Unchanged}");
+                    Append(aw, $"[동기화 완료] 업로드 {upserts.Count} · 삭제 {deletes.Count} · 동일 {preview.Unchanged} (1커밋)");
             });
         }
         catch (Exception ex)

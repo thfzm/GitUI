@@ -182,33 +182,39 @@ public partial class UploadTabViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var work = new List<SyncFileEntry>();
+            var upserts = new List<(string path, byte[] content)>();
+            var deletes = new List<string>();
             foreach (var e in preview.Entries)
             {
-                if (e.Change is FileChange.Added or FileChange.Modified) work.Add(e);
-                else if (e.Change == FileChange.Deleted && MirrorDeletions) work.Add(e);
+                if (e.Change is FileChange.Added or FileChange.Modified)
+                {
+                    var bytes = await File.ReadAllBytesAsync(e.LocalPath);
+                    upserts.Add((e.TargetPath, bytes));
+                }
+                else if (e.Change == FileChange.Deleted && MirrorDeletions)
+                {
+                    deletes.Add(e.TargetPath);
+                }
             }
 
-            int uploaded = 0, removed = 0;
-            for (int i = 0; i < work.Count; i++)
+            if (upserts.Count == 0 && deletes.Count == 0)
             {
-                var e = work[i];
-                Progress = (double)(i + 1) / work.Count * 100;
-                if (e.Change == FileChange.Deleted)
-                {
-                    ProgressLabel = $"{i + 1}/{work.Count} · 🗑 {e.TargetPath}";
-                    await _github.DeleteFileAsync(owner, Repo.Name, e.TargetPath, e.RemoteSha, message, CurrentBranchAccessor());
-                    removed++;
-                }
-                else
-                {
-                    ProgressLabel = $"{i + 1}/{work.Count} · {e.TargetPath}";
-                    var content = await File.ReadAllBytesAsync(e.LocalPath);
-                    await _github.UploadFileAsync(owner, Repo.Name, e.TargetPath, content, message, CurrentBranchAccessor());
-                    uploaded++;
-                }
+                StatusMessage = "변경 사항 없음.";
+                return;
             }
-            StatusMessage = $"동기화 완료 — 업로드 {uploaded} · 삭제 {removed} · 동일 {preview.Unchanged} · 스킵 {preview.Skipped}";
+
+            ProgressLabel = $"0/{upserts.Count} · blob 업로드 중...";
+            var prog = new Progress<(int current, int total, string filename)>(t =>
+            {
+                Progress = (double)t.current / Math.Max(1, t.total) * 100;
+                ProgressLabel = $"{t.current}/{t.total} · {t.filename}";
+            });
+
+            await _github.BulkCommitAsync(owner, Repo.Name, CurrentBranchAccessor(),
+                message, upserts, deletes, prog,
+                notify: m => Application.Current?.Dispatcher.Invoke(() => StatusMessage = m));
+
+            StatusMessage = $"동기화 완료 (1커밋) — 업로드 {upserts.Count} · 삭제 {deletes.Count} · 동일 {preview.Unchanged} · 스킵 {preview.Skipped}";
         }
         catch (Exception ex)
         {
@@ -257,16 +263,25 @@ public partial class UploadTabViewModel : ObservableObject
                 }
             }
 
-            for (int i = 0; i < work.Count; i++)
+            var upserts = new List<(string path, byte[] content)>(work.Count);
+            foreach (var (src, target) in work)
             {
-                var (src, target) = work[i];
-                Progress = (double)(i + 1) / work.Count * 100;
-                ProgressLabel = $"{i + 1}/{work.Count} · {target}";
                 var content = await File.ReadAllBytesAsync(src);
-                await _github.UploadFileAsync(owner, Repo.Name, target, content, msg, CurrentBranchAccessor());
+                upserts.Add((target, content));
             }
 
-            StatusMessage = $"{work.Count}개 파일 업로드 완료.";
+            ProgressLabel = $"0/{upserts.Count} · blob 업로드 중...";
+            var prog = new Progress<(int current, int total, string filename)>(t =>
+            {
+                Progress = (double)t.current / Math.Max(1, t.total) * 100;
+                ProgressLabel = $"{t.current}/{t.total} · {t.filename}";
+            });
+
+            await _github.BulkCommitAsync(owner, Repo.Name, CurrentBranchAccessor(),
+                msg, upserts, Array.Empty<string>(), prog,
+                notify: m => Application.Current?.Dispatcher.Invoke(() => StatusMessage = m));
+
+            StatusMessage = $"{upserts.Count}개 파일 업로드 완료 (1커밋).";
         }
         catch (Exception ex)
         {

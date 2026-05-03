@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Octokit;
 
@@ -362,15 +363,224 @@ public class GitHubService
             : new GitignoreMatcher(folderPath, Array.Empty<string>());
 
         var files = EnumerateFiles(folderPath, matcher).ToArray();
-        for (int i = 0; i < files.Length; i++)
+        var upserts = new List<(string path, byte[] content)>(files.Length);
+        foreach (var file in files)
         {
-            var file = files[i];
             var rel = Path.GetRelativePath(folderPath, file).Replace('\\', '/');
             var targetPath = string.IsNullOrEmpty(targetPathPrefix) ? rel : $"{targetPathPrefix.TrimEnd('/')}/{rel}";
-            progress?.Report((i + 1, files.Length, rel));
             var content = await File.ReadAllBytesAsync(file);
-            await UploadFileAsync(owner, repo, targetPath, content, commitMessage, branch);
+            upserts.Add((targetPath, content));
         }
+        await BulkCommitAsync(owner, repo, branch, commitMessage, upserts, Array.Empty<string>(), progress);
+    }
+
+    /// <summary>
+    /// Commits many file additions/updates and deletions in a SINGLE commit via the Git Data API.
+    /// Blob uploads run in parallel (capped to avoid GitHub secondary rate limits).
+    /// On secondary-rate-limit / abuse responses we honor Retry-After and resume automatically.
+    /// Total API cost: ~N+4 calls regardless of file count, vs 2N with the Contents API.
+    /// History: 1 commit instead of N.
+    /// </summary>
+    public async Task BulkCommitAsync(
+        string owner, string repo, string branch, string commitMessage,
+        IReadOnlyList<(string path, byte[] content)> upserts,
+        IReadOnlyList<string> deletes,
+        IProgress<(int current, int total, string filename)>? progress = null,
+        Action<string>? notify = null)
+    {
+        Require();
+        if (upserts.Count == 0 && deletes.Count == 0) return;
+        if (_token == null) throw new InvalidOperationException("Not authenticated.");
+        var client = _client!;
+
+        // 1. Get current branch tip
+        var reference = await RetryOnRateLimitAsync(
+            () => client.Git.Reference.Get(owner, repo, $"heads/{branch}"), notify);
+        var latestCommitSha = reference.Object.Sha;
+        var latestCommit = await RetryOnRateLimitAsync(
+            () => client.Git.Commit.Get(owner, repo, latestCommitSha), notify);
+
+        // 2. Create blobs in parallel. Concurrency is intentionally low (3) because GitHub's
+        // secondary rate limit triggers on bursts of content-creation calls. If we still hit it,
+        // we honor Retry-After per-blob and resume.
+        var blobShas = new string[upserts.Count];
+        int done = 0;
+        using (var sem = new SemaphoreSlim(3))
+        {
+            var tasks = new Task[upserts.Count];
+            for (int i = 0; i < upserts.Count; i++)
+            {
+                int idx = i;
+                tasks[i] = Task.Run(async () =>
+                {
+                    await sem.WaitAsync();
+                    try
+                    {
+                        var (path, content) = upserts[idx];
+                        var blob = await RetryOnRateLimitAsync(
+                            () => client.Git.Blob.Create(owner, repo, new NewBlob
+                            {
+                                Content = Convert.ToBase64String(content),
+                                Encoding = EncodingType.Base64
+                            }),
+                            notify);
+                        blobShas[idx] = blob.Sha;
+                        int n = Interlocked.Increment(ref done);
+                        progress?.Report((n, upserts.Count, path));
+                    }
+                    finally { sem.Release(); }
+                });
+            }
+            await Task.WhenAll(tasks);
+        }
+
+        // 3. Build a tree with all blobs and explicit deletes (sha:null).
+        // Octokit doesn't reliably serialize Sha=null on NewTreeItem, so we POST raw JSON.
+        var newTreeJson = BuildNewTreeJson(latestCommit.Tree.Sha, upserts, blobShas, deletes);
+        var newTreeSha = await RetryOnRateLimitAsync(async () =>
+        {
+            using var http = new HttpClient();
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("GitUI");
+            http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+            using var body = new StringContent(newTreeJson, Encoding.UTF8, "application/json");
+            var resp = await http.PostAsync($"https://api.github.com/repos/{owner}/{repo}/git/trees", body);
+            var respText = await resp.Content.ReadAsStringAsync();
+            if ((int)resp.StatusCode == 403 && IsSecondaryRateLimitMessage(respText))
+            {
+                int wait = ParseRetryAfter(resp) ?? 60;
+                throw new SecondaryLimitMarker(wait);
+            }
+            if (!resp.IsSuccessStatusCode)
+                throw new InvalidOperationException($"Tree 생성 실패: {(int)resp.StatusCode} {respText}");
+            using var treeDoc = JsonDocument.Parse(respText);
+            return treeDoc.RootElement.GetProperty("sha").GetString()!;
+        }, notify);
+
+        // 4. Create commit + advance ref
+        var commit = await RetryOnRateLimitAsync(
+            () => client.Git.Commit.Create(owner, repo,
+                new NewCommit(commitMessage, newTreeSha, latestCommitSha)),
+            notify);
+        await RetryOnRateLimitAsync(
+            () => client.Git.Reference.Update(owner, repo, $"heads/{branch}",
+                new ReferenceUpdate(commit.Sha)),
+            notify);
+    }
+
+    private sealed class SecondaryLimitMarker : Exception
+    {
+        public int RetryAfterSeconds { get; }
+        public SecondaryLimitMarker(int seconds) : base($"secondary rate limit (retry after {seconds}s)")
+        {
+            RetryAfterSeconds = seconds;
+        }
+    }
+
+    private static bool IsSecondaryRateLimitMessage(string body)
+    {
+        if (string.IsNullOrEmpty(body)) return false;
+        return body.Contains("secondary rate limit", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("abuse detection", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int? ParseRetryAfter(HttpResponseMessage resp)
+    {
+        if (resp.Headers.TryGetValues("Retry-After", out var vals))
+        {
+            foreach (var v in vals)
+                if (int.TryParse(v, out var s)) return s;
+        }
+        return null;
+    }
+
+    private static async Task<T> RetryOnRateLimitAsync<T>(Func<Task<T>> op, Action<string>? notify)
+    {
+        const int maxAttempts = 5;
+        for (int attempt = 1; ; attempt++)
+        {
+            try { return await op(); }
+            catch (Exception ex) when (attempt < maxAttempts && TryGetRateLimitWait(ex, out var wait))
+            {
+                notify?.Invoke($"GitHub 레이트리밋 — {wait.TotalSeconds:0}초 대기 후 재시도 ({attempt}/{maxAttempts - 1})");
+                await Task.Delay(wait);
+            }
+        }
+    }
+
+    private static Task RetryOnRateLimitAsync(Func<Task> op, Action<string>? notify)
+        => RetryOnRateLimitAsync<bool>(async () => { await op(); return true; }, notify);
+
+    private static bool TryGetRateLimitWait(Exception ex, out TimeSpan wait)
+    {
+        // Octokit's secondary-limit/abuse exception
+        if (ex is AbuseException ab)
+        {
+            wait = TimeSpan.FromSeconds(ab.RetryAfterSeconds ?? 60);
+            return true;
+        }
+        // Primary rate limit
+        if (ex is RateLimitExceededException rl)
+        {
+            wait = rl.Reset - DateTimeOffset.UtcNow;
+            if (wait < TimeSpan.FromSeconds(5)) wait = TimeSpan.FromSeconds(60);
+            return true;
+        }
+        // Our own raw-HTTP marker
+        if (ex is SecondaryLimitMarker sm)
+        {
+            wait = TimeSpan.FromSeconds(sm.RetryAfterSeconds);
+            return true;
+        }
+        // Fallback: any 403 + secondary-limit message that slipped through Octokit typing
+        var msg = ex.Message ?? "";
+        if ((ex is ApiException api && (int)api.StatusCode == 403) || msg.Length > 0)
+        {
+            if (IsSecondaryRateLimitMessage(msg))
+            {
+                wait = TimeSpan.FromSeconds(60);
+                return true;
+            }
+        }
+        wait = default;
+        return false;
+    }
+
+    private static string BuildNewTreeJson(
+        string baseTreeSha,
+        IReadOnlyList<(string path, byte[] content)> upserts,
+        string[] blobShas,
+        IReadOnlyList<string> deletes)
+    {
+        var sb = new StringBuilder();
+        sb.Append('{');
+        sb.Append("\"base_tree\":");
+        sb.Append(JsonSerializer.Serialize(baseTreeSha));
+        sb.Append(",\"tree\":[");
+        bool first = true;
+        for (int i = 0; i < upserts.Count; i++)
+        {
+            if (!first) sb.Append(',');
+            first = false;
+            sb.Append('{');
+            sb.Append("\"path\":");
+            sb.Append(JsonSerializer.Serialize(upserts[i].path.Replace('\\', '/').TrimStart('/')));
+            sb.Append(",\"mode\":\"100644\",\"type\":\"blob\",\"sha\":");
+            sb.Append(JsonSerializer.Serialize(blobShas[i]));
+            sb.Append('}');
+        }
+        foreach (var del in deletes)
+        {
+            if (!first) sb.Append(',');
+            first = false;
+            sb.Append('{');
+            sb.Append("\"path\":");
+            sb.Append(JsonSerializer.Serialize(del.Replace('\\', '/').TrimStart('/')));
+            sb.Append(",\"mode\":\"100644\",\"type\":\"blob\",\"sha\":null}");
+        }
+        sb.Append("]}");
+        return sb.ToString();
     }
 
     public static IEnumerable<string> EnumerateFiles(string root, GitignoreMatcher matcher)
