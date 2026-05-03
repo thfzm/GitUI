@@ -436,27 +436,59 @@ public class GitHubService
 
         // 3. Build a tree with all blobs and explicit deletes (sha:null).
         // Octokit doesn't reliably serialize Sha=null on NewTreeItem, so we POST raw JSON.
-        var newTreeJson = BuildNewTreeJson(latestCommit.Tree.Sha, upserts, blobShas, deletes);
-        var newTreeSha = await RetryOnRateLimitAsync(async () =>
-        {
-            using var http = new HttpClient();
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("GitUI");
-            http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
-            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+        // Large trees are chunked: GitHub returns 422 "request timed out" if a single create has too many entries.
+        // Each chunk's resulting tree becomes the base_tree of the next.
+        var allEntries = new List<TreeEntry>(upserts.Count + deletes.Count);
+        for (int i = 0; i < upserts.Count; i++)
+            allEntries.Add(new TreeEntry(upserts[i].path.Replace('\\', '/').TrimStart('/'), blobShas[i]));
+        foreach (var del in deletes)
+            allEntries.Add(new TreeEntry(del.Replace('\\', '/').TrimStart('/'), null));
 
-            using var body = new StringContent(newTreeJson, Encoding.UTF8, "application/json");
-            var resp = await http.PostAsync($"https://api.github.com/repos/{owner}/{repo}/git/trees", body);
-            var respText = await resp.Content.ReadAsStringAsync();
-            if ((int)resp.StatusCode == 403 && IsSecondaryRateLimitMessage(respText))
+        const int treeChunkSize = 200;
+        int chunkCount = (allEntries.Count + treeChunkSize - 1) / treeChunkSize;
+        if (chunkCount == 0) chunkCount = 1;
+        string currentTreeSha = latestCommit.Tree.Sha;
+
+        for (int c = 0; c < chunkCount; c++)
+        {
+            var slice = allEntries.GetRange(
+                c * treeChunkSize,
+                Math.Min(treeChunkSize, allEntries.Count - c * treeChunkSize));
+            string baseTree = currentTreeSha;
+            int chunkIndex = c;
+            if (chunkCount > 1)
+                notify?.Invoke($"Tree 청크 {chunkIndex + 1}/{chunkCount} 생성 중 ({slice.Count} entries)...");
+
+            currentTreeSha = await RetryOnRateLimitAsync(async () =>
             {
-                int wait = ParseRetryAfter(resp) ?? 60;
-                throw new SecondaryLimitMarker(wait);
-            }
-            if (!resp.IsSuccessStatusCode)
-                throw new InvalidOperationException($"Tree 생성 실패: {(int)resp.StatusCode} {respText}");
-            using var treeDoc = JsonDocument.Parse(respText);
-            return treeDoc.RootElement.GetProperty("sha").GetString()!;
-        }, notify);
+                using var http = new HttpClient();
+                http.DefaultRequestHeaders.UserAgent.ParseAdd("GitUI");
+                http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+                http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+                var json = BuildNewTreeJson(baseTree, slice);
+                using var body = new StringContent(json, Encoding.UTF8, "application/json");
+                var resp = await http.PostAsync($"https://api.github.com/repos/{owner}/{repo}/git/trees", body);
+                var respText = await resp.Content.ReadAsStringAsync();
+                int code = (int)resp.StatusCode;
+                if (code == 403 && IsSecondaryRateLimitMessage(respText))
+                {
+                    int wait = ParseRetryAfter(resp) ?? 60;
+                    throw new SecondaryLimitMarker(wait);
+                }
+                // 5xx is transient (GitHub backend timeout). Retry with backoff.
+                if (code >= 500) throw new TransientServerMarker(code);
+                // 422 with "timed out" / "too large" — also transient on retry; if persistent, the chunk size is too big.
+                if (code == 422 && (respText.Contains("timed out", StringComparison.OrdinalIgnoreCase)
+                                    || respText.Contains("too large", StringComparison.OrdinalIgnoreCase)))
+                    throw new TransientServerMarker(code);
+                if (!resp.IsSuccessStatusCode)
+                    throw new InvalidOperationException($"Tree 생성 실패: {code} {respText}");
+                using var treeDoc = JsonDocument.Parse(respText);
+                return treeDoc.RootElement.GetProperty("sha").GetString()!;
+            }, notify);
+        }
+        var newTreeSha = currentTreeSha;
 
         // 4. Create commit + advance ref
         var commit = await RetryOnRateLimitAsync(
@@ -475,6 +507,15 @@ public class GitHubService
         public SecondaryLimitMarker(int seconds) : base($"secondary rate limit (retry after {seconds}s)")
         {
             RetryAfterSeconds = seconds;
+        }
+    }
+
+    private sealed class TransientServerMarker : Exception
+    {
+        public int StatusCode { get; }
+        public TransientServerMarker(int statusCode) : base($"transient server error {statusCode}")
+        {
+            StatusCode = statusCode;
         }
     }
 
@@ -497,13 +538,13 @@ public class GitHubService
 
     private static async Task<T> RetryOnRateLimitAsync<T>(Func<Task<T>> op, Action<string>? notify)
     {
-        const int maxAttempts = 5;
+        const int maxAttempts = 6;
         for (int attempt = 1; ; attempt++)
         {
             try { return await op(); }
-            catch (Exception ex) when (attempt < maxAttempts && TryGetRateLimitWait(ex, out var wait))
+            catch (Exception ex) when (attempt < maxAttempts && TryGetRetryWait(ex, attempt, out var wait, out var label))
             {
-                notify?.Invoke($"GitHub 레이트리밋 — {wait.TotalSeconds:0}초 대기 후 재시도 ({attempt}/{maxAttempts - 1})");
+                notify?.Invoke($"{label} — {wait.TotalSeconds:0}초 대기 후 재시도 ({attempt}/{maxAttempts - 1})");
                 await Task.Delay(wait);
             }
         }
@@ -512,12 +553,13 @@ public class GitHubService
     private static Task RetryOnRateLimitAsync(Func<Task> op, Action<string>? notify)
         => RetryOnRateLimitAsync<bool>(async () => { await op(); return true; }, notify);
 
-    private static bool TryGetRateLimitWait(Exception ex, out TimeSpan wait)
+    private static bool TryGetRetryWait(Exception ex, int attempt, out TimeSpan wait, out string label)
     {
         // Octokit's secondary-limit/abuse exception
         if (ex is AbuseException ab)
         {
             wait = TimeSpan.FromSeconds(ab.RetryAfterSeconds ?? 60);
+            label = "GitHub 레이트리밋";
             return true;
         }
         // Primary rate limit
@@ -525,59 +567,73 @@ public class GitHubService
         {
             wait = rl.Reset - DateTimeOffset.UtcNow;
             if (wait < TimeSpan.FromSeconds(5)) wait = TimeSpan.FromSeconds(60);
+            label = "GitHub 1차 레이트리밋";
             return true;
         }
-        // Our own raw-HTTP marker
+        // Our own raw-HTTP secondary-limit marker
         if (ex is SecondaryLimitMarker sm)
         {
             wait = TimeSpan.FromSeconds(sm.RetryAfterSeconds);
+            label = "GitHub 레이트리밋";
             return true;
         }
-        // Fallback: any 403 + secondary-limit message that slipped through Octokit typing
-        var msg = ex.Message ?? "";
-        if ((ex is ApiException api && (int)api.StatusCode == 403) || msg.Length > 0)
+        // 5xx server errors (502/503/504) — transient. Exponential backoff.
+        if (ex is TransientServerMarker tx)
         {
-            if (IsSecondaryRateLimitMessage(msg))
+            wait = TimeSpan.FromSeconds(Math.Min(60, 5 * Math.Pow(2, attempt - 1)));  // 5,10,20,40,60,60
+            label = $"GitHub 일시 오류 {tx.StatusCode}";
+            return true;
+        }
+        if (ex is ApiException apiSvr)
+        {
+            int code = (int)apiSvr.StatusCode;
+            if (code >= 500 && code <= 599)
             {
-                wait = TimeSpan.FromSeconds(60);
+                wait = TimeSpan.FromSeconds(Math.Min(60, 5 * Math.Pow(2, attempt - 1)));
+                label = $"GitHub 일시 오류 {code}";
                 return true;
             }
         }
+        // Network blips
+        if (ex is HttpRequestException || ex is TaskCanceledException)
+        {
+            wait = TimeSpan.FromSeconds(Math.Min(30, 3 * Math.Pow(2, attempt - 1)));
+            label = "네트워크 일시 오류";
+            return true;
+        }
+        // Fallback: 403 + secondary-limit message that slipped through Octokit typing
+        var msg = ex.Message ?? "";
+        if (ex is ApiException api && (int)api.StatusCode == 403 && IsSecondaryRateLimitMessage(msg))
+        {
+            wait = TimeSpan.FromSeconds(60);
+            label = "GitHub 레이트리밋";
+            return true;
+        }
         wait = default;
+        label = "";
         return false;
     }
 
-    private static string BuildNewTreeJson(
-        string baseTreeSha,
-        IReadOnlyList<(string path, byte[] content)> upserts,
-        string[] blobShas,
-        IReadOnlyList<string> deletes)
+    /// <summary>Path + (blobSha or null = delete).</summary>
+    private record TreeEntry(string Path, string? BlobSha);
+
+    private static string BuildNewTreeJson(string baseTreeSha, IReadOnlyList<TreeEntry> entries)
     {
         var sb = new StringBuilder();
         sb.Append('{');
         sb.Append("\"base_tree\":");
         sb.Append(JsonSerializer.Serialize(baseTreeSha));
         sb.Append(",\"tree\":[");
-        bool first = true;
-        for (int i = 0; i < upserts.Count; i++)
+        for (int i = 0; i < entries.Count; i++)
         {
-            if (!first) sb.Append(',');
-            first = false;
+            if (i > 0) sb.Append(',');
+            var e = entries[i];
             sb.Append('{');
             sb.Append("\"path\":");
-            sb.Append(JsonSerializer.Serialize(upserts[i].path.Replace('\\', '/').TrimStart('/')));
+            sb.Append(JsonSerializer.Serialize(e.Path));
             sb.Append(",\"mode\":\"100644\",\"type\":\"blob\",\"sha\":");
-            sb.Append(JsonSerializer.Serialize(blobShas[i]));
+            sb.Append(e.BlobSha == null ? "null" : JsonSerializer.Serialize(e.BlobSha));
             sb.Append('}');
-        }
-        foreach (var del in deletes)
-        {
-            if (!first) sb.Append(',');
-            first = false;
-            sb.Append('{');
-            sb.Append("\"path\":");
-            sb.Append(JsonSerializer.Serialize(del.Replace('\\', '/').TrimStart('/')));
-            sb.Append(",\"mode\":\"100644\",\"type\":\"blob\",\"sha\":null}");
         }
         sb.Append("]}");
         return sb.ToString();
